@@ -1,6 +1,7 @@
 # Phase 01: Project Setup & Scaffolding
 
-**Status**: pending | **Effort**: 2h | **Priority**: P1
+**Status**: ✅ DONE | **Effort**: 2h | **Priority**: P1
+**Completed**: 2025-12-27 | **Review Report**: `../reports/code-reviewer-251227-0323-phase01-setup.md`
 
 ## Objective
 
@@ -183,11 +184,20 @@ npm run tauri dev
 
 ## Success Criteria
 
-- [ ] `npm run tauri dev` opens window without errors
-- [ ] React app renders in Tauri webview
-- [ ] Rust compiles without warnings
-- [ ] Tailwind CSS classes work
-- [ ] Folder structure created
+- [✅] `npm run tauri dev` opens window without errors
+- [✅] React app renders in Tauri webview
+- [✅] Rust compiles without warnings (423 crates compiled)
+- [✅] Tailwind CSS classes work (v4 stable)
+- [✅] Folder structure created
+
+## Issues Fixed (2025-12-27)
+
+All critical issues from code review have been resolved:
+- ✅ **C1**: CSP enabled with proper security policy
+- ✅ **C3**: Product name standardized to `BeautyFullShot` (per Round 2 validation)
+- ✅ **M2**: Added `rel="noopener noreferrer"` to external links
+- ✅ **H2**: .gitkeep files added to empty folders
+- ✅ Title updated in `index.html`
 
 ---
 
