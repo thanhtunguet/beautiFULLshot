@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=BeautyFullShot
+Comment=Screenshot beautification app
+Exec=beautyfullshot
+Icon=beautyfullshot
+Type=Application
+Categories=Graphics;Utility;
+Keywords=screenshot;capture;annotation;beautify;
+StartupWMClass=beautyfullshot

@@ -3,7 +3,7 @@
 ## Project Overview
 BeautyShot is a cross-platform screenshot beautification application built with Tauri 2, React 19, and TypeScript. It enables users to capture screenshots and apply editing/annotation tools for enhanced visual content creation.
 
-**Version:** 0.1.0
+**Version:** 1.0.0 (Release)
 **Tech Stack:** Tauri 2 | React 19 | TypeScript | Tailwind CSS 4 | Konva Canvas
 
 ---
@@ -226,10 +226,26 @@ npm run build           # Production build
 - Non-destructive crop tool with aspect ratios
 - Right sidebar panel for quick access
 
-### Phase 06-08: Planned
-- **Phase 06:** Export system (PNG, JPG, WebP)
-- **Phase 07:** Native integration (hotkeys, tray menu)
-- **Phase 08:** Polish & distribution
+### Phase 06: Export System ✓
+- PNG/JPEG/WebP export with quality settings
+- 1x/2x/3x resolution scaling
+- Crop application during export
+- Clipboard copy functionality
+- File dialog integration
+
+### Phase 07: Native Integration ✓
+- Global hotkey registration (Cmd/Ctrl+Shift+C)
+- System tray/menu bar icon
+- System notifications
+- Auto-save quick export
+
+### Phase 08: Polish & Distribution ✓
+- macOS entitlements & permissions (screen recording)
+- Linux desktop entry & AppImage packaging
+- Windows NSIS installer configuration
+- CI/CD workflows (GitHub Actions)
+- Release automation with multi-platform builds
+- v1.0.0 stable release
 
 ---
 
@@ -317,5 +333,56 @@ interface WindowInfo {
 
 ---
 
+## Phase 08: Distribution & Packaging
+
+### Platform-Specific Build Configuration
+**File:** `src-tauri/tauri.conf.json`
+
+Multi-platform distribution targets:
+- **macOS:** Universal binary (Intel + Apple Silicon), DMG installer, Code signing ready
+- **Windows:** x86_64 NSIS installer with language selector
+- **Linux:** AppImage + DEB packages for Debian/Ubuntu distributions
+- **Common:** Icon bundling (32x32, 128x128, ICNS, ICO), metadata (name, version, copyright)
+
+### macOS Permissions & Security
+**Files:** `src-tauri/Info.plist`, `src-tauri/entitlements.plist`
+
+- **Screen Recording:** NSScreenCaptureDescription explains permission request to users
+- **Sandbox:** Disabled for screen capture access
+- **File Access:** User-selected file read/write permitted for exports
+- **Minimum OS:** 11.0 (Big Sur)
+
+### Linux Distribution
+**File:** `src-tauri/beautyfullshot.desktop`
+
+Linux desktop entry for:
+- Application menu integration
+- System launcher registration
+- Icon and category classification
+- AppImage & DEB package support
+
+### CI/CD Pipeline
+**Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+
+**CI Workflow:**
+- Runs on: push to master/main, pull requests
+- Steps: Dependency install, TypeScript check, tests with coverage, Rust cargo check
+- Node 20, Rust latest, Ubuntu Linux build environment
+
+**Release Workflow:**
+- Triggers on version tags (v*)
+- Matrix builds: macOS aarch64 + x86_64, Windows x86_64, Linux x86_64
+- Cross-platform build matrix with platform-specific dependencies
+- Auto-creates GitHub release with signed/unsigned binaries
+- Tests included in release job (npm test, tsc check)
+
+### Release Configuration
+- **Signing:** TAURI_SIGNING_PRIVATE_KEY secrets for release signing
+- **Drafts:** Releases created as drafts (manual review before publish)
+- **Assets:** Binaries automatically uploaded to GitHub releases
+
+---
+
 **Last Updated:** 2025-12-29
-**Phase:** 05 - Beautification Features (Latest)
+**Phase:** 08 - Polish & Distribution (Latest)
+**Release:** v1.0.0 - Stable

@@ -4,8 +4,9 @@
 
 BeautyShot is a cross-platform screenshot beautification desktop application built with Tauri 2 (Rust backend) and React 19 (TypeScript frontend). The architecture emphasizes performance, memory efficiency, and clean separation between native and web components.
 
-**Current Phase:** 05 - Beautification & Cropping
+**Current Phase:** 08 - Polish & Distribution (v1.0.0 Release)
 **Tech Stack:** Tauri 2 | React 19 | TypeScript | Zustand | Konva.js | Tailwind CSS 4
+**Release Status:** Production Ready - v1.0.0
 
 ---
 
@@ -535,11 +536,14 @@ Finally Block
 - Auto-open after capture
 - System notifications
 
-### Phase 08 (Planned): Polish & Distribution
-- Keyboard shortcuts cheatsheet
-- Settings/preferences panel
-- Distribution packaging (DMG, DEB, EXE)
-- Auto-update mechanism
+### Phase 08 (Current): Polish & Distribution ✓
+- macOS entitlements: screen recording permission, file access
+- macOS minimum: OS 11.0 (Big Sur)
+- Linux: AppImage + DEB packages, desktop entry integration
+- Windows: NSIS installer with language selector
+- CI/CD: GitHub Actions with multi-platform matrix builds
+- Release automation: Tag-triggered builds with binary signing
+- v1.0.0: Production release
 
 ---
 
@@ -655,7 +659,76 @@ fn save_file(bytes: Vec<u8>, path: String) -> Result<(), String> { }
 
 ---
 
-**Document Version:** 2.0
+## Continuous Integration & Deployment
+
+### CI Workflow (`.github/workflows/ci.yml`)
+
+Runs on every push to master/main and pull requests:
+
+```yaml
+Jobs:
+  1. test (Ubuntu latest)
+     - Install Node 20
+     - Install npm dependencies
+     - Run: npm test -- --run --coverage
+     - Run: npx tsc --noEmit (TypeScript check)
+     - Verify: tests pass, type safety maintained
+
+  2. build-check (Ubuntu 22.04)
+     - Install Node 20 + Rust latest
+     - Linux deps: libwebkit2gtk-4.1-dev, libgtk-3-dev, libayatana-appindicator3-dev
+     - Run: npm run build (frontend)
+     - Run: cargo check (Rust compilation)
+     - Verify: build succeeds on all platforms
+```
+
+### Release Workflow (`.github/workflows/release.yml`)
+
+Triggered by version tags (v*), builds and publishes production binaries:
+
+```yaml
+Build Matrix:
+  - macOS (Intel): aarch64-apple-darwin
+  - macOS (Apple Silicon): x86_64-apple-darwin
+  - Windows: x86_64-pc-windows-msvc
+  - Linux: x86_64-unknown-linux-gnu
+
+Per-Platform Steps:
+  1. Checkout code
+  2. Setup Node 20
+  3. Setup Rust with target
+  4. Install platform-specific dependencies
+  5. npm ci (frozen dependencies)
+  6. Build via tauri-apps/tauri-action@v0
+  7. Auto-signs binaries with TAURI_SIGNING_PRIVATE_KEY
+  8. Creates GitHub release draft with assets
+
+Post-Build:
+  - Test job runs: npm test --run, tsc --noEmit
+  - Release created as draft (manual review before publish)
+  - Assets: DMG (macOS), EXE (Windows), AppImage + DEB (Linux)
+```
+
+### Platform-Specific Configuration
+
+**macOS (src-tauri/tauri.conf.json):**
+- Universal binary support (Intel + ARM)
+- Code signing ready (signingIdentity, entitlements.plist)
+- DMG installer
+- Minimum OS: 11.0 (Big Sur)
+
+**Windows:**
+- NSIS installer with displayLanguageSelector
+- webviewInstallMode: downloadBootstrapper
+
+**Linux:**
+- AppImage with media framework bundling
+- DEB packages with dependencies: libwebkit2gtk-4.1-0, libgtk-3-0
+- RPM epoch support
+
+---
+
+**Document Version:** 3.0
 **Last Updated:** 2025-12-29
-**Current Phase:** 05 - Beautification & Cropping
-**Next Milestone:** Phase 06 - Export System
+**Current Phase:** 08 - Polish & Distribution
+**Release Status:** v1.0.0 - Production Ready

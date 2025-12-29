@@ -1,9 +1,10 @@
 ---
 title: "BeautyFullShot - Cross-platform Screenshot Beautifier"
 description: "Tauri v2 + React + Konva app for screenshot capture, annotation, and beautification"
-status: in_progress
+status: completed
 phase-03-completed: 2025-12-27
 phase-05-completed: 2025-12-29
+phase-08-completed: 2025-12-29
 priority: P1
 effort: 36h
 branch: master
@@ -33,11 +34,11 @@ Cross-platform screenshot beautification app inspired by Winshot. Built with Tau
 | 01 | Project Setup & Scaffolding | ✅ DONE | 2h | [phase-01](./phase-01-project-setup.md) |
 | 02 | Screenshot Capture | ✅ DONE | 4h | [phase-02](./phase-02-screenshot-capture.md) |
 | 03 | Canvas Editor Foundation | ✅ DONE | 4h | [phase-03](./phase-03-canvas-editor.md) |
-| 04 | Annotation Tools | pending | 6h | [phase-04](./phase-04-annotation-tools.md) |
+| 04 | Annotation Tools | ✅ DONE | 6h | [phase-04](./phase-04-annotation-tools.md) |
 | 05 | Beautification Features | ✅ DONE | 4h | [phase-05](./phase-05-beautification.md) |
-| 06 | Export System | pending | 3h | [phase-06](./phase-06-export-system.md) |
-| 07 | Native OS Integration | pending | 5h | [phase-07](./phase-07-native-integration.md) |
-| 08 | Polish & Distribution | pending | 4h | [phase-08](./phase-08-polish-distribution.md) |
+| 06 | Export System | ✅ DONE | 3h | [phase-06](./phase-06-export-system.md) |
+| 07 | Native OS Integration | ✅ DONE | 5h | [phase-07](./phase-07-native-integration.md) |
+| 08 | Polish & Distribution | ✅ DONE | 4h | [phase-08](./phase-08-polish-distribution.md) |
 
 ## Target Platforms
 
