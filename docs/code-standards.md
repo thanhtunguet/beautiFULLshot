@@ -11,27 +11,52 @@ This document establishes code quality standards, naming conventions, and best p
 ```
 src/
 ├── components/                # React components (feature-organized)
-│   ├── canvas/               # Canvas-related components
+│   ├── canvas/               # Canvas layer components
 │   │   ├── canvas-editor.tsx
-│   │   └── zoom-controls.tsx
+│   │   ├── zoom-controls.tsx
+│   │   ├── background-layer.tsx       # Phase 05: Beautification
+│   │   ├── crop-overlay.tsx           # Phase 05: Cropping
+│   │   ├── annotation-layer.tsx       # Phase 04: Annotations
+│   │   └── annotations/               # Phase 04: Annotation shapes
+│   │       ├── arrow-shape.tsx
+│   │       ├── rect-shape.tsx
+│   │       ├── ellipse-shape.tsx
+│   │       ├── text-shape.tsx
+│   │       └── ...
 │   ├── layout/               # Layout components
 │   │   └── editor-layout.tsx
 │   ├── toolbar/              # Toolbar components
-│   │   └── toolbar.tsx
+│   │   ├── toolbar.tsx
+│   │   ├── tool-buttons.tsx  # Phase 04
+│   │   └── tool-settings.tsx # Phase 04
+│   ├── sidebar/              # Sidebar panels (Phase 05+)
+│   │   ├── sidebar.tsx
+│   │   ├── background-panel.tsx       # Phase 05
+│   │   └── crop-panel.tsx             # Phase 05
 │   └── .gitkeep
+├── data/                      # Data constants (Phase 05+)
+│   ├── gradients.ts          # Gradient & color presets
+│   └── aspect-ratios.ts      # Crop aspect ratio presets
 ├── hooks/                     # Custom React hooks
 │   ├── use-image.ts          # Image loading hook
 │   ├── use-screenshot.ts     # Screenshot capture hook
+│   ├── use-drawing.ts        # Phase 04: Drawing logic
+│   ├── use-keyboard-shortcuts.ts  # Phase 04: Keyboard input
 │   └── .gitkeep
 ├── stores/                    # Zustand state stores
 │   ├── canvas-store.ts       # Canvas state management
+│   ├── annotation-store.ts   # Phase 04: Annotations
+│   ├── background-store.ts   # Phase 05: Background & padding
+│   ├── crop-store.ts         # Phase 05: Crop tool
 │   └── .gitkeep
 ├── types/                     # TypeScript type definitions
 │   ├── screenshot.ts         # Screenshot-related types
+│   ├── annotations.ts        # Phase 04: Annotation types
 │   └── .gitkeep
 ├── utils/                     # Utility functions
 │   ├── screenshot-api.ts     # Screenshot API wrapper
-│   └── .gitkeep
+│   ├── logger.ts             # Phase 04: Logging utility
+│   └── sanitize.ts           # Phase 04: Input sanitization
 ├── App.tsx                    # Root component
 ├── main.tsx                   # Entry point
 ├── styles.css                 # Global styles
@@ -395,6 +420,117 @@ useEffect(() => {
 
 ---
 
+## Phase 05: Beautification & Cropping Patterns
+
+### Data Constants Pattern
+Store preset configurations in `src/data/` files for reusability:
+
+```typescript
+// src/data/gradients.ts
+export interface GradientPreset {
+  id: string;
+  name: string;
+  colors: string[];
+  direction: 'linear' | 'radial';
+  angle?: number;
+}
+
+export const GRADIENT_PRESETS: GradientPreset[] = [
+  { id: 'ocean', name: 'Ocean', colors: ['#667eea', '#764ba2'], direction: 'linear', angle: 135 },
+  // ... more presets
+];
+```
+
+### Zustand Multi-Store Pattern
+Multiple stores for independent concerns (background, crop, canvas):
+
+```typescript
+// Each store manages isolated feature state
+export const useBackgroundStore = create<BackgroundState>((set) => ({
+  type: 'gradient',
+  gradient: GRADIENT_PRESETS[0],
+  solidColor: '#ffffff',
+  padding: 40,
+  setGradient: (gradient) => set({ type: 'gradient', gradient }),
+  setPadding: (padding) => set({ padding: Math.max(0, Math.min(200, padding)) }),
+}));
+
+export const useCropStore = create<CropState>((set) => ({
+  isCropping: false,
+  cropRect: null,
+  aspectRatio: null,
+  startCrop: (ratio = null) => set({ isCropping: true, aspectRatio: ratio }),
+}));
+```
+
+### Konva Shape Rendering
+Use `Shape` component for custom rendering (gradients, patterns):
+
+```typescript
+// Complex gradients with Konva Shape
+<Shape
+  sceneFunc={(ctx) => {
+    const grd = ctx.createLinearGradient(x1, y1, x2, y2);
+    gradient.colors.forEach((color, i) => {
+      grd.addColorStop(i / (gradient.colors.length - 1), color);
+    });
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, width, height);
+  }}
+  listening={false}
+/>
+```
+
+### Sidebar Panel Pattern
+Encapsulate feature UI in dedicated panel components:
+
+```typescript
+// src/components/sidebar/background-panel.tsx
+export function BackgroundPanel() {
+  const { type, gradient, padding, setGradient, setPadding } = useBackgroundStore();
+
+  return (
+    <div className="p-4 border-b">
+      {/* Grid of presets */}
+      <div className="grid grid-cols-6 gap-2">
+        {GRADIENT_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            onClick={() => setGradient(preset)}
+            className={`w-8 h-8 ${type === 'gradient' && gradient?.id === preset.id ? 'ring-2' : ''}`}
+            style={{ background: `linear-gradient(${preset.angle}deg, ${preset.colors.join(', ')})` }}
+          />
+        ))}
+      </div>
+
+      {/* Slider control */}
+      <input type="range" min="0" max="200" value={padding} onChange={(e) => setPadding(Number(e.target.value))} />
+    </div>
+  );
+}
+```
+
+### Transformer Aspect Ratio Constraint
+Enforce aspect ratios during resize:
+
+```typescript
+<Transformer
+  keepRatio={aspectRatio !== null}
+  boundBoxFunc={(oldBox, newBox) => {
+    if (aspectRatio !== null) {
+      if (newBox.width / newBox.height > aspectRatio) {
+        newBox.height = newBox.width / aspectRatio;
+      } else {
+        newBox.width = newBox.height * aspectRatio;
+      }
+    }
+    return newBox;
+  }}
+/>
+```
+
+---
+
 ## Testing Guidelines
 
 ### Unit Tests (To be implemented)
@@ -493,6 +629,6 @@ Before submitting PR, ensure:
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-12-27
-**Phase:** 03 - Canvas Editor Foundation
+**Document Version:** 2.0
+**Last Updated:** 2025-12-29
+**Phase:** 05 - Beautification & Cropping

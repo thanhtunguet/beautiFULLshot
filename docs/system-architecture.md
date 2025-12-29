@@ -4,7 +4,7 @@
 
 BeautyShot is a cross-platform screenshot beautification desktop application built with Tauri 2 (Rust backend) and React 19 (TypeScript frontend). The architecture emphasizes performance, memory efficiency, and clean separation between native and web components.
 
-**Current Phase:** 03 - Canvas Editor Foundation
+**Current Phase:** 05 - Beautification & Cropping
 **Tech Stack:** Tauri 2 | React 19 | TypeScript | Zustand | Konva.js | Tailwind CSS 4
 
 ---
@@ -57,23 +57,39 @@ BeautyShot is a cross-platform screenshot beautification desktop application bui
 ```
 App (root)
 └── EditorLayout
-    ├── Toolbar
+    ├── Toolbar (top)
     │   ├── Capture Screen button (useScreenshot)
     │   ├── Capture Window dropdown
     │   └── Clear button
-    └── Canvas Area
-        ├── CanvasEditor
-        │   ├── Stage (Konva)
-        │   │   ├── Layer (Image)
-        │   │   │   └── Image (react-konva)
-        │   │   └── Layer (Annotations - Phase 04)
-        │   │       └── [Shapes, Text - Phase 04+]
-        │   └── Zoom/Pan handlers
-        └── ZoomControls (floating)
-            ├── Zoom Out button
-            ├── Zoom % display
-            ├── Zoom In button
-            └── Fit to Screen button
+    │
+    ├── Canvas Area (center)
+    │   ├── CanvasEditor
+    │   │   ├── Stage (Konva)
+    │   │   │   ├── Layer (Background - Phase 05)
+    │   │   │   │   └── BackgroundLayer (gradient/solid/transparent)
+    │   │   │   ├── Layer (Image)
+    │   │   │   │   └── Image (react-konva)
+    │   │   │   ├── Layer (Crop Overlay - Phase 05)
+    │   │   │   │   └── CropOverlay (draggable crop box)
+    │   │   │   └── Layer (Annotations - Phase 04)
+    │   │   │       └── AnnotationLayer (shapes, text)
+    │   │   └── Zoom/Pan handlers
+    │   └── ZoomControls (floating)
+    │       ├── Zoom Out button
+    │       ├── Zoom % display
+    │       ├── Zoom In button
+    │       └── Fit to Screen button
+    │
+    └── Sidebar (right - Phase 05+)
+        ├── BackgroundPanel
+        │   ├── Gradient presets grid (24 items)
+        │   ├── Solid color buttons (6 items)
+        │   ├── Transparent toggle
+        │   └── Padding slider (0-200px)
+        └── CropPanel (Phase 05)
+            ├── Aspect ratio selector
+            ├── Crop mode toggle
+            └── Apply/Cancel buttons
 ```
 
 ---
@@ -475,39 +491,55 @@ Finally Block
 
 ## Phase-by-Phase Architecture Evolution
 
-### Phase 03 (Current): Canvas Foundation
+### Phase 03: Canvas Foundation ✓
 - ✓ Screenshot capture via Tauri
 - ✓ Zustand state management
 - ✓ Konva canvas with zoom/pan
 - ✓ Responsive toolbar
 - ✓ Memory management
 
-### Phase 04 (Planned): Annotation Tools
-- Shapes layer (rect, circle, arrow)
-- Brush/pencil tool
-- Text tool
-- Color picker
-- Layer management UI
+### Phase 04: Annotation Tools ✓
+- ✓ Shapes layer (rect, circle, arrow)
+- ✓ Brush/pencil tool with colors
+- ✓ Text tool with font selection
+- ✓ Color picker
+- ✓ Layer management UI (reorder, delete)
+- ✓ Undo/redo with keyboard shortcuts
 
-### Phase 05 (Planned): Beautification
-- Filter pipeline
-- Real-time preview
-- Adjustable parameters
+### Phase 05 (Current): Beautification & Cropping ✓
+- ✓ Background layer with 3 modes:
+  - Gradient backgrounds (24 presets)
+  - Solid colors (6 base + custom)
+  - Transparent (checkerboard pattern)
+- ✓ Padding control (0-200px slider)
+- ✓ Non-destructive crop tool:
+  - 8 aspect ratio presets
+  - Draggable crop box with transformer handles
+  - Dimmed overlay for area preview
+  - Aspect ratio constraint enforcement
+- ✓ Right sidebar panels
+  - Background preset selection
+  - Crop mode toggle
+- ✓ Real-time preview on canvas
 
-### Phase 06 (Planned): Export
+### Phase 06 (Planned): Export System
 - PNG/JPG/WebP export
-- Compression settings
+- Compression quality settings
 - File dialog integration
+- Apply crop during export
+- Clipboard copy option
 
 ### Phase 07 (Planned): Native Integration
 - Global hotkey registration
 - Tray/menu bar icon
 - Auto-open after capture
+- System notifications
 
-### Phase 08 (Planned): Polish
-- Keyboard shortcuts
-- Settings/preferences
-- Distribution packaging
+### Phase 08 (Planned): Polish & Distribution
+- Keyboard shortcuts cheatsheet
+- Settings/preferences panel
+- Distribution packaging (DMG, DEB, EXE)
+- Auto-update mechanism
 
 ---
 
@@ -623,7 +655,7 @@ fn save_file(bytes: Vec<u8>, path: String) -> Result<(), String> { }
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-12-27
-**Current Phase:** 03 - Canvas Editor Foundation
-**Next Milestone:** Phase 04 - Annotation Tools
+**Document Version:** 2.0
+**Last Updated:** 2025-12-29
+**Current Phase:** 05 - Beautification & Cropping
+**Next Milestone:** Phase 06 - Export System

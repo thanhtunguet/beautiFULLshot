@@ -102,8 +102,72 @@ Top toolbar UI providing:
 Integrates `useScreenshot()` and `useCanvasStore()` to flow captured bytes → store → canvas.
 
 ### 5. Layout & Control Components
-- **EditorLayout** (`src/components/layout/editor-layout.tsx`): Main container layout with toolbar + canvas
+- **EditorLayout** (`src/components/layout/editor-layout.tsx`): Main container layout with toolbar + canvas + sidebar
 - **ZoomControls** (`src/components/canvas/zoom-controls.tsx`): Float controls for zoom in/out, fit to screen
+
+### 6. Phase 05: Beautification Features (NEW)
+
+#### Background Layer Component
+**File:** `src/components/canvas/background-layer.tsx`
+
+Renders beautified backgrounds behind the image with support for:
+- **Gradient Backgrounds:** 24 presets with linear/radial directions
+- **Solid Colors:** 6 pre-defined colors (white, black, gray, red, blue, green)
+- **Transparent Mode:** Checkerboard pattern (10px squares) to show transparency
+- **Padding:** 0-200px margin around the image for spacing
+
+Uses Konva Shape or Rect components for canvas rendering. Gradient angles calculated from degrees.
+
+#### Crop Overlay Component
+**File:** `src/components/canvas/crop-overlay.tsx`
+
+Non-destructive crop tool providing:
+- **Draggable Crop Box:** White dashed rectangle
+- **Aspect Ratio Support:** 1:1, 4:3, 3:2, 16:9, 21:9, 9:16, 3:4, or freeform
+- **Transformer Handle:** Resize from corners/edges with visual feedback
+- **Dimmed Overlay:** Shows area outside crop region
+- **Minimum Size:** 50px to prevent invalid crops
+
+Crop rect stored in `useCropStore`; applied during export (Phase 06).
+
+#### Sidebar Panel Components
+**File:** `src/components/sidebar/background-panel.tsx` & `crop-panel.tsx`
+
+Right sidebar UI panels for:
+- **Background Panel:** Grid of gradient presets, solid color buttons, transparent toggle, padding slider
+- **Crop Panel:** Aspect ratio selector, crop mode toggle, apply/cancel buttons
+
+### 7. State Management (Phase 05)
+
+#### Background Store
+**File:** `src/stores/background-store.ts`
+
+Manages background beautification state:
+- `type`: 'gradient' | 'solid' | 'transparent'
+- `gradient`: Selected GradientPreset object
+- `solidColor`: Hex color string
+- `padding`: 0-200px (clamped)
+
+Actions: `setGradient()`, `setSolidColor()`, `setTransparent()`, `setPadding()`, `reset()`
+
+#### Crop Store
+**File:** `src/stores/crop-store.ts`
+
+Manages crop tool state:
+- `isCropping`: Toggle crop mode on/off
+- `cropRect`: Position & dimensions of crop selection
+- `aspectRatio`: Ratio constraint (null = freeform)
+
+Actions: `startCrop()`, `setCropRect()`, `applyCrop()`, `cancelCrop()`, `setAspectRatio()`
+
+### 8. Data Constants (Phase 05)
+
+**File:** `src/data/gradients.ts`
+- `GRADIENT_PRESETS`: 24 presets (Blues, Purples, Warm, Greens, Neutrals, Vibrant, Soft, Dark)
+- `SOLID_COLORS`: 6 colors
+
+**File:** `src/data/aspect-ratios.ts`
+- `ASPECT_RATIOS`: 8 presets including Free, Square, Widescreen, Portrait variants
 
 ---
 
@@ -147,11 +211,24 @@ npm run build           # Production build
 - Responsive toolbar with capture controls
 - Zoom controls UI
 
-### Phase 04-08: Planned
-- **Phase 04:** Annotation tools (brush, shapes, text)
-- **Phase 05:** Beautification filters
-- **Phase 06:** Export system
-- **Phase 07:** Native integration
+### Phase 04: Annotation Tools ✓
+- Brush tool with adjustable size/color/opacity
+- Shape tools: rectangle, circle, arrow, text
+- Color picker integration
+- Layer management (drawing order control)
+- Undo/redo functionality
+
+### Phase 05: Beautification Features ✓
+- Gradient backgrounds (24 presets)
+- Solid color backgrounds (6 colors)
+- Transparent mode with checkerboard pattern
+- Padding control (0-200px around image)
+- Non-destructive crop tool with aspect ratios
+- Right sidebar panel for quick access
+
+### Phase 06-08: Planned
+- **Phase 06:** Export system (PNG, JPG, WebP)
+- **Phase 07:** Native integration (hotkeys, tray menu)
 - **Phase 08:** Polish & distribution
 
 ---
@@ -240,5 +317,5 @@ interface WindowInfo {
 
 ---
 
-**Last Updated:** 2025-12-27
-**Phase:** 03 - Canvas Editor Foundation
+**Last Updated:** 2025-12-29
+**Phase:** 05 - Beautification Features (Latest)

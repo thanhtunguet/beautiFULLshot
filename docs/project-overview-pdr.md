@@ -46,14 +46,27 @@ BeautyShot is a modern, cross-platform screenshot beautification tool that empow
   - Undo/redo functionality
   - Layer management
 
-#### F4: Beautification & Filters
-- **Requirement:** Apply visual filters and enhancements
-- **Scope:** Phase 05 (planned)
+#### F4: Beautification & Padding
+- **Requirement:** Add backgrounds and padding to screenshots for beautification
+- **Scope:** Phase 05 ✓
 - **Acceptance Criteria:**
-  - Pre-defined filter set (blur, brightness, contrast, etc.)
-  - Real-time preview
-  - Adjustable parameters
-  - Non-destructive (can remove filters)
+  - Gradient backgrounds: 24+ presets with direction/angle support ✓
+  - Solid color backgrounds: 6 colors + custom color selection ✓
+  - Transparent mode with checkerboard pattern ✓
+  - Padding slider: 0-200px around image ✓
+  - Non-destructive (can change/remove background) ✓
+  - Real-time preview on canvas ✓
+
+#### F4b: Crop Tool (Phase 05)
+- **Requirement:** Non-destructive image cropping with aspect ratio support
+- **Scope:** Phase 05 ✓
+- **Acceptance Criteria:**
+  - 8 aspect ratio presets (1:1, 4:3, 3:2, 16:9, 21:9, 9:16, 3:4, freeform) ✓
+  - Draggable crop box with transformer handles ✓
+  - Real-time aspect ratio enforcement ✓
+  - Dimmed overlay outside crop area ✓
+  - Minimum 50px size validation ✓
+  - Non-destructive (applied during export) ✓
 
 #### F5: Export & Sharing
 - **Requirement:** Save edited screenshots in multiple formats
@@ -186,10 +199,10 @@ BeautyShot is a modern, cross-platform screenshot beautification tool that empow
 | 01 | Project Setup | ✓ | Complete |
 | 02 | Screenshot Capture | ✓ | Complete |
 | 03 | Canvas Editor Foundation | ✓ | Complete |
-| 04 | Annotation Tools | ⏳ | Next |
-| 05 | Beautification Filters | ⏳ | Q1 2026 |
-| 06 | Export System | ⏳ | Q1 2026 |
-| 07 | Native Integration | ⏳ | Q2 2026 |
+| 04 | Annotation Tools | ✓ | Complete |
+| 05 | Beautification & Cropping | ✓ | Complete |
+| 06 | Export System | ⏳ | Next |
+| 07 | Native Integration | ⏳ | Q1 2026 |
 | 08 | Polish & Distribution | ⏳ | Q2 2026 |
 
 ---
@@ -237,7 +250,7 @@ BeautyShot is a modern, cross-platform screenshot beautification tool that empow
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-12-27
-**Phase Completed:** 03 - Canvas Editor Foundation
-**Next Phase:** 04 - Annotation Tools
+**Document Version:** 2.1
+**Last Updated:** 2025-12-29
+**Phase Completed:** 05 - Beautification & Cropping
+**Next Phase:** 06 - Export System
