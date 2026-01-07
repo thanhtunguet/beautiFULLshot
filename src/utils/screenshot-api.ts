@@ -155,3 +155,19 @@ export async function captureFullscreenHidden(): Promise<Uint8Array> {
 export async function captureRegionHidden(region: CaptureRegion): Promise<Uint8Array> {
   return captureWithHiddenWindow(() => captureRegion(region));
 }
+
+
+/**
+ * Update global keyboard shortcuts in the backend
+ * @param capture - Hotkey for fullscreen capture
+ * @param captureRegion - Hotkey for region capture
+ * @param captureWindow - Hotkey for window capture
+ * @returns Array of error messages for shortcuts that failed to register
+ */
+export async function updateShortcuts(
+  capture: string,
+  captureRegion: string,
+  captureWindow: string
+): Promise<string[]> {
+  return await invoke<string[]>("update_shortcuts", { capture, captureRegion, captureWindow });
+}

@@ -16,9 +16,11 @@ import {
 import {
   saveFile,
   getPicturesDir,
+  getDesktopDir,
   showSaveDialog,
 } from '../utils/file-api';
 import { logError } from '../utils/logger';
+import { useCropStore } from '../stores/crop-store';
 
 export function useExport() {
   const {
@@ -32,9 +34,10 @@ export function useExport() {
     startExport,
     finishExport,
   } = useExportStore();
+  const { cropRect } = useCropStore();
   const { stageRef, originalWidth, originalHeight } = useCanvasStore();
   const { getPaddingPx } = useBackgroundStore();
-  const { showNotifications } = useSettingsStore();
+  const { showNotifications, saveLocation, customSavePath } = useSettingsStore();
 
   /**
    * Send notification if enabled in settings
@@ -78,7 +81,7 @@ export function useExport() {
       canvasWidth,
       canvasHeight,
     });
-  }, [stageRef, format, quality, pixelRatio, originalWidth, originalHeight, getPaddingPx, outputAspectRatio]);
+  }, [stageRef, format, quality, pixelRatio, cropRect, originalWidth, originalHeight, getPaddingPx, outputAspectRatio]);
 
   /**
    * Get user-friendly error message
@@ -139,7 +142,26 @@ export function useExport() {
   }, [isExporting, exportToDataURL, startExport, finishExport, notify]);
 
   /**
-   * Quick save to Pictures/BeautyShot folder with loading state
+   * Get save directory based on settings
+   */
+  const getSaveDir = useCallback(async (): Promise<string> => {
+    switch (saveLocation) {
+      case 'desktop':
+        return await getDesktopDir();
+      case 'custom':
+        if (customSavePath) {
+          return customSavePath;
+        }
+        // Fallback to pictures if custom path not set
+        return await getPicturesDir();
+      case 'pictures':
+      default:
+        return await getPicturesDir();
+    }
+  }, [saveLocation, customSavePath]);
+
+  /**
+   * Quick save to configured folder with loading state
    */
   const quickSave = useCallback(async () => {
     if (isExporting) return null;
@@ -154,9 +176,9 @@ export function useExport() {
 
     try {
       const bytes = dataURLToBytes(dataURL);
-      const picturesDir = await getPicturesDir();
+      const saveDir = await getSaveDir();
       const filename = generateFilename(format);
-      const fullPath = `${picturesDir}/${filename}`;
+      const fullPath = `${saveDir}/${filename}`;
 
       const savedPath = await saveFile(fullPath, bytes);
       setLastSavePath(savedPath);
@@ -171,7 +193,7 @@ export function useExport() {
     } finally {
       finishExport();
     }
-  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify]);
+  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify, getSaveDir]);
 
   /**
    * Save with dialog for location selection with loading state

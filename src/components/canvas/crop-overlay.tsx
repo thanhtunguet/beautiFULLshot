@@ -6,6 +6,7 @@ import type Konva from 'konva';
 import { useCropStore } from '../../stores/crop-store';
 import { useCanvasStore } from '../../stores/canvas-store';
 import { useBackgroundStore } from '../../stores/background-store';
+import { useExportStore } from '../../stores/export-store';
 
 // Minimum crop size
 const MIN_CROP_SIZE = 50;
@@ -27,6 +28,7 @@ export function CropOverlay({ offsetX = 0, offsetY = 0 }: CropOverlayProps) {
   const originalWidth = useCanvasStore((state) => state.originalWidth);
   const originalHeight = useCanvasStore((state) => state.originalHeight);
   const getPaddingPx = useBackgroundStore((state) => state.getPaddingPx);
+  const isExporting = useExportStore((state) => state.isExporting);
   const padding = getPaddingPx(originalWidth, originalHeight);
 
   // Total offset includes aspect ratio extension offset + padding
@@ -95,7 +97,8 @@ export function CropOverlay({ offsetX = 0, offsetY = 0 }: CropOverlayProps) {
     [setCropRect]
   );
 
-  if (!isCropping || originalWidth === 0) return null;
+  // Hide overlay when not cropping, no image, or during export
+  if (!isCropping || originalWidth === 0 || isExporting) return null;
 
   return (
     <Layer>

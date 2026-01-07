@@ -48,6 +48,7 @@ pub fn run() {
             file_ops::save_file,
             file_ops::get_pictures_dir,
             file_ops::get_desktop_dir,
+            shortcuts::update_shortcuts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
