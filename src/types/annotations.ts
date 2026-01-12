@@ -7,6 +7,7 @@ export type AnnotationType =
   | 'arrow'
   | 'freehand'
   | 'text'
+  | 'number'
   | 'spotlight';
 
 export interface BaseAnnotation {
@@ -60,6 +61,15 @@ export interface FreehandAnnotation extends BaseAnnotation {
   strokeWidth: number;
 }
 
+export interface NumberAnnotation extends BaseAnnotation {
+  type: 'number';
+  number: number;
+  radius: number;
+  fill: string;
+  textColor: string;
+  fontSize: number;
+}
+
 export interface SpotlightAnnotation extends BaseAnnotation {
   type: 'spotlight';
   width: number;
@@ -73,6 +83,7 @@ export type Annotation =
   | LineAnnotation
   | FreehandAnnotation
   | TextAnnotation
+  | NumberAnnotation
   | SpotlightAnnotation;
 
 export type ToolType = AnnotationType | 'select';

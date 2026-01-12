@@ -39,6 +39,7 @@ export function BackgroundLayer({ canvasWidth, canvasHeight }: BackgroundLayerPr
     solidColor,
     wallpaper,
     customImageUrl,
+    autoColor,
     blurAmount,
     getPaddingPx,
   } = useBackgroundStore();
@@ -119,7 +120,7 @@ export function BackgroundLayer({ canvasWidth, canvasHeight }: BackgroundLayerPr
         groupRef.current.getLayer()?.batchDraw();
       }
     }
-  }, [type, wallpaper, loadedImage, debouncedBlurAmount, totalWidth, totalHeight, gradient, solidColor]);
+  }, [type, wallpaper, loadedImage, debouncedBlurAmount, totalWidth, totalHeight, gradient, solidColor, autoColor]);
 
   // Don't render if no image loaded
   if (originalWidth === 0 || originalHeight === 0) {
@@ -157,6 +158,22 @@ export function BackgroundLayer({ canvasWidth, canvasHeight }: BackgroundLayerPr
           width={totalWidth}
           height={totalHeight}
           fill={solidColor}
+          listening={false}
+        />
+      </Group>
+    );
+  }
+
+  // Auto color background (calculated from screenshot)
+  if (type === 'auto') {
+    return (
+      <Group ref={groupRef}>
+        <Rect
+          x={0}
+          y={0}
+          width={totalWidth}
+          height={totalHeight}
+          fill={autoColor || '#808080'}
           listening={false}
         />
       </Group>

@@ -5,14 +5,22 @@ import type { WindowInfo } from '../../types/screenshot';
 import * as screenshotApi from '../../utils/screenshot-api';
 import { logError } from '../../utils/logger';
 
+interface WindowWithThumbnail extends WindowInfo {
+  thumbnail?: string;
+  thumbnailLoading?: boolean;
+  thumbnailError?: boolean;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onCapture: (bytes: Uint8Array, width: number, height: number) => void;
 }
 
+const THUMBNAIL_SIZE = 80;
+
 export function WindowPickerModal({ isOpen, onClose, onCapture }: Props) {
-  const [windows, setWindows] = useState<WindowInfo[]>([]);
+  const [windows, setWindows] = useState<WindowWithThumbnail[]>([]);
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -28,7 +36,37 @@ export function WindowPickerModal({ isOpen, onClose, onCapture }: Props) {
       const filtered = list
         .filter((w) => w.title.trim() !== '' && w.width > 0 && w.height > 0)
         .sort((a, b) => a.app_name.localeCompare(b.app_name));
-      setWindows(filtered);
+
+      const windowsWithThumbnails: WindowWithThumbnail[] = filtered.map((w) => ({
+        ...w,
+        thumbnailLoading: true,
+      }));
+      setWindows(windowsWithThumbnails);
+
+      const batchSize = 5;
+      for (let i = 0; i < filtered.length; i += batchSize) {
+        const batch = filtered.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (win) => {
+            try {
+              const thumbnail = await screenshotApi.getWindowThumbnail(win.id, THUMBNAIL_SIZE);
+              setWindows((prev) =>
+                prev.map((w) =>
+                  w.id === win.id
+                    ? { ...w, thumbnail: `data:image/png;base64,${thumbnail}`, thumbnailLoading: false }
+                    : w
+                )
+              );
+            } catch {
+              setWindows((prev) =>
+                prev.map((w) =>
+                  w.id === win.id ? { ...w, thumbnailLoading: false, thumbnailError: true } : w
+                )
+              );
+            }
+          })
+        );
+      }
     } catch (e) {
       logError('WindowPickerModal:fetchWindows', e);
       setWindows([]);
@@ -89,10 +127,21 @@ export function WindowPickerModal({ isOpen, onClose, onCapture }: Props) {
   };
 
   // Double-click to capture
-  const handleDoubleClick = (windowId: number) => {
+  const handleDoubleClick = async (windowId: number) => {
     setSelectedId(windowId);
-    // Capture immediately after selection
-    setTimeout(handleCapture, 0);
+    setCapturing(true);
+    try {
+      const bytes = await screenshotApi.captureWindow(windowId);
+      if (bytes) {
+        const { width, height } = await getImageDimensions(bytes);
+        onCapture(bytes, width, height);
+        onClose();
+      }
+    } catch (e) {
+      logError('WindowPickerModal:capture', e);
+    } finally {
+      setCapturing(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -104,7 +153,7 @@ export function WindowPickerModal({ isOpen, onClose, onCapture }: Props) {
     >
       <div
         ref={modalRef}
-        className="bg-white dark:bg-gray-800 rounded-lg w-[600px] max-h-[80vh] flex flex-col shadow-xl"
+        className="bg-white dark:bg-gray-800 rounded-lg w-[500px] max-h-[70vh] flex flex-col shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="window-picker-title"
@@ -148,27 +197,43 @@ export function WindowPickerModal({ isOpen, onClose, onCapture }: Props) {
               No windows found
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="flex flex-col gap-2">
               {windows.map((win) => (
                 <button
                   key={win.id}
                   onClick={() => setSelectedId(win.id)}
                   onDoubleClick={() => handleDoubleClick(win.id)}
-                  className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                  className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
                     selectedId === win.id
-                      ? 'bg-blue-500 text-white'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-500'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
-                  <div className="font-medium truncate">{win.title}</div>
-                  <div
-                    className={`text-sm truncate ${
-                      selectedId === win.id
-                        ? 'text-blue-100'
-                        : 'text-gray-500 dark:text-gray-400'
-                    }`}
-                  >
-                    {win.app_name} • {win.width}×{win.height}
+                  {/* Thumbnail */}
+                  <div className="w-20 h-16 flex-shrink-0 bg-gray-100 dark:bg-gray-900 rounded flex items-center justify-center overflow-hidden">
+                    {win.thumbnailLoading ? (
+                      <div className="text-gray-400 text-xs">...</div>
+                    ) : win.thumbnailError ? (
+                      <div className="text-gray-400 text-xs">✕</div>
+                    ) : win.thumbnail ? (
+                      <img
+                        src={win.thumbnail}
+                        alt={win.title}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="text-gray-400 text-xs">?</div>
+                    )}
+                  </div>
+
+                  {/* Window info */}
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">
+                      {win.title}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {win.app_name} • {win.width}×{win.height}
+                    </div>
                   </div>
                 </button>
               ))}

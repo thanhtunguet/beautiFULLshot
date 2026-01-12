@@ -113,6 +113,31 @@ pub fn get_windows() -> Result<Vec<WindowInfo>, String> {
     Ok(result)
 }
 
+/// Capture window thumbnail (small preview) - returns base64-encoded PNG
+#[tauri::command]
+pub fn get_window_thumbnail(window_id: u32, max_size: u32) -> Result<String, String> {
+    let windows = XcapWindow::all().map_err(|e| e.to_string())?;
+    let window = windows
+        .into_iter()
+        .find(|w| w.id().unwrap_or(0) == window_id)
+        .ok_or("Window not found")?;
+
+    let image = window.capture_image().map_err(|e| e.to_string())?;
+
+    // Resize to thumbnail
+    let (width, height) = (image.width(), image.height());
+    let (new_width, new_height) = if width > height {
+        let ratio = max_size as f32 / width as f32;
+        (max_size, (height as f32 * ratio) as u32)
+    } else {
+        let ratio = max_size as f32 / height as f32;
+        ((width as f32 * ratio) as u32, max_size)
+    };
+
+    let thumbnail = image::imageops::resize(&image, new_width, new_height, image::imageops::FilterType::Lanczos3);
+    image_to_base64_png(&thumbnail)
+}
+
 /// Capture specific window by ID - returns base64-encoded PNG
 #[tauri::command]
 pub fn capture_window(window_id: u32) -> Result<String, String> {

@@ -1,6 +1,6 @@
 // BackgroundPanel - UI for selecting background with tabs: Wallpaper, Gradient, Color, Image
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { GRADIENT_PRESETS, SOLID_COLORS } from '../../data/gradients';
 import {
   WALLPAPER_CATEGORIES,
@@ -11,6 +11,7 @@ import {
 } from '../../data/wallpapers';
 import { useBackgroundStore } from '../../stores/background-store';
 import { useCanvasStore } from '../../stores/canvas-store';
+import { extractDominantColor } from '../../utils/color-extractor';
 
 // Tab type mapping
 type TabType = 'wallpaper' | 'gradient' | 'color' | 'image';
@@ -41,13 +42,17 @@ export function BackgroundPanel() {
     solidColor,
     wallpaper,
     customImageUrl,
+    autoColor,
     blurAmount,
     shadowBlur,
     cornerRadius,
     paddingPercent,
+    imageLibrary,
     setGradient,
     setSolidColor,
     setTransparent,
+    setAuto,
+    setAutoColor,
     setWallpaper,
     setCustomImage,
     clearCustomImage,
@@ -55,9 +60,17 @@ export function BackgroundPanel() {
     setShadowBlur,
     setCornerRadius,
     setPaddingPercent,
+    loadLibrary,
+    selectFromLibrary,
+    removeFromLibrary,
+    clearLibrary,
   } = useBackgroundStore();
 
-  const { fitToView } = useCanvasStore();
+  useEffect(() => {
+    loadLibrary();
+  }, [loadLibrary]);
+
+  const { imageUrl, fitToView } = useCanvasStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Active tab state
@@ -71,6 +84,19 @@ export function BackgroundPanel() {
 
   // Active wallpaper category
   const [activeCategory, setActiveCategory] = useState('favorites');
+
+  // Auto-extract dominant color when image changes
+  useEffect(() => {
+    if (imageUrl) {
+      extractDominantColor(imageUrl)
+        .then((color) => {
+          setAutoColor(color);
+        })
+        .catch(() => {
+          setAutoColor('#808080'); // Fallback gray
+        });
+    }
+  }, [imageUrl, setAutoColor]);
 
   // Handle tab change
   const handleTabChange = (tab: TabType) => {
@@ -247,6 +273,31 @@ export function BackgroundPanel() {
       {/* Color Tab */}
       {activeTab === 'color' && (
         <div className="space-y-3">
+          {/* Auto color option */}
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Auto (from screenshot)</p>
+            <button
+              onClick={setAuto}
+              className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-all ${
+                type === 'auto'
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500'
+                  : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+              }`}
+              title="Auto color from screenshot"
+            >
+              <div
+                className="w-8 h-8 rounded border border-gray-300 dark:border-gray-600"
+                style={{ background: autoColor || '#808080' }}
+              />
+              <div className="text-left">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Auto</span>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {autoColor || 'Calculating...'}
+                </p>
+              </div>
+            </button>
+          </div>
+
           <p className="text-xs text-gray-500 dark:text-gray-400">Solid Colors</p>
           <div className="flex flex-wrap gap-2">
             {SOLID_COLORS.map((c) => (
@@ -299,7 +350,7 @@ export function BackgroundPanel() {
             onClick={() => fileInputRef.current?.click()}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
               type === 'image' && customImageUrl
                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                 : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
@@ -308,7 +359,7 @@ export function BackgroundPanel() {
             {type === 'image' && customImageUrl ? (
               <div className="space-y-2">
                 <div
-                  className="w-full h-16 rounded bg-cover bg-center"
+                  className="w-full h-12 rounded bg-cover bg-center"
                   style={{ backgroundImage: `url(${customImageUrl})` }}
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -319,7 +370,7 @@ export function BackgroundPanel() {
               <>
                 <ImageIcon />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  Click to select, drop image, or press ⌘V while hovering.
+                  Click to select or drop image
                 </p>
               </>
             )}
@@ -341,6 +392,42 @@ export function BackgroundPanel() {
             >
               Remove background image
             </button>
+          )}
+
+          {/* Image Library */}
+          {imageLibrary.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Recent Images</p>
+                <button
+                  onClick={clearLibrary}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {imageLibrary.map((img) => (
+                  <div key={img.id} className="relative group">
+                    <button
+                      onClick={() => selectFromLibrary(img.id)}
+                      className="w-full aspect-square rounded-lg overflow-hidden bg-cover bg-center border border-gray-200 dark:border-gray-700 hover:border-blue-500 transition-colors"
+                      style={{ backgroundImage: `url(${img.thumbnail})` }}
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFromLibrary(img.id);
+                      }}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

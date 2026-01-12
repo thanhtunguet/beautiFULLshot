@@ -14,6 +14,7 @@ import type {
   LineAnnotation,
   FreehandAnnotation,
   TextAnnotation,
+  NumberAnnotation,
   SpotlightAnnotation,
 } from '../types/annotations';
 
@@ -125,6 +126,24 @@ export function useDrawing() {
             screenY: screenPos?.y ?? 0,
           },
         }));
+        return;
+      }
+
+      if (tool === 'number') {
+        const { getNextNumber, strokeColor: numberColor } = useAnnotationStore.getState();
+        const numberAnnotation: Omit<NumberAnnotation, 'id'> = {
+          type: 'number',
+          x: pos.x,
+          y: pos.y,
+          number: getNextNumber(),
+          radius: 16,
+          fill: numberColor,
+          textColor: '#ffffff',
+          fontSize: 14,
+          rotation: 0,
+          draggable: true,
+        };
+        addAnnotation(numberAnnotation);
         return;
       }
 

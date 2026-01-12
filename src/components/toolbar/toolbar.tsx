@@ -1,18 +1,17 @@
 // Toolbar - Main toolbar with capture, annotation tools, and settings
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { useScreenshot } from '../../hooks/use-screenshot';
 import { useCanvasStore } from '../../stores/canvas-store';
 import { useAnnotationStore } from '../../stores/annotation-store';
 import { useCropStore } from '../../stores/crop-store';
-import { useClickAway } from '../../hooks/use-click-away';
+import { useUIStore } from '../../stores/ui-store';
 import { ToolButtons } from './tool-buttons';
 import { ToolSettings } from './tool-settings';
 import { UndoRedoButtons } from './undo-redo-buttons';
 import { SettingsModal } from '../settings/settings-modal';
 import { logError } from '../../utils/logger';
-import type { WindowInfo } from '../../types/screenshot';
 
 // Helper: Get image dimensions from bytes
 function getImageDimensions(bytes: Uint8Array): Promise<{ width: number; height: number }> {
@@ -36,27 +35,12 @@ function getImageDimensions(bytes: Uint8Array): Promise<{ width: number; height:
 }
 
 export function Toolbar() {
-  const { captureFullscreen, captureWindow, getWindows, loading, error, waylandWarning } = useScreenshot();
+  const { captureFullscreen, loading, error, waylandWarning } = useScreenshot();
   const { setImageFromBytes, clearCanvas, imageUrl, fitToView } = useCanvasStore();
   const { clearAnnotations } = useAnnotationStore();
   const { clearCrop } = useCropStore();
-  const [windows, setWindows] = useState<WindowInfo[]>([]);
-  const [showWindows, setShowWindows] = useState(false);
+  const { openWindowPicker } = useUIStore();
   const [showSettings, setShowSettings] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown on outside click or ESC
-  const closeDropdown = useCallback(() => setShowWindows(false), []);
-  useClickAway(dropdownRef, closeDropdown, showWindows);
-
-  // Fetch windows when dropdown is opened
-  useEffect(() => {
-    if (showWindows) {
-      getWindows()
-        .then(setWindows)
-        .catch((e) => logError('Toolbar:getWindows', e));
-    }
-  }, [showWindows, getWindows]);
 
   const handleCaptureFullscreen = useCallback(async () => {
     const bytes = await captureFullscreen();
@@ -72,22 +56,6 @@ export function Toolbar() {
       }
     }
   }, [captureFullscreen, clearCrop, setImageFromBytes, fitToView]);
-
-  const handleCaptureWindow = useCallback(async (windowId: number) => {
-    const bytes = await captureWindow(windowId);
-    if (bytes) {
-      try {
-        const { width, height } = await getImageDimensions(bytes);
-        clearCrop(); // Clear any existing crop when loading new image
-        setImageFromBytes(bytes, width, height);
-        // Auto-fit to view after capture
-        setTimeout(() => fitToView(), 50);
-      } catch (e) {
-        logError('Toolbar:captureWindow', e);
-      }
-    }
-    setShowWindows(false);
-  }, [captureWindow, clearCrop, setImageFromBytes, fitToView]);
 
   return (
     <div className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-2 overflow-visible">
@@ -118,44 +86,18 @@ export function Toolbar() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 010 2H6v3a1 1 0 01-2 0V5zM20 5a1 1 0 00-1-1h-4a1 1 0 000 2h3v3a1 1 0 002 0V5zM4 19a1 1 0 001 1h4a1 1 0 000-2H6v-3a1 1 0 00-2 0v4zM20 19a1 1 0 01-1 1h-4a1 1 0 010-2h3v-3a1 1 0 012 0v4z" />
           </svg>
         </button>
-
-        {/* Window capture dropdown */}
-        <div ref={dropdownRef} className="relative">
-          <button
-            onClick={() => setShowWindows(!showWindows)}
-            aria-expanded={showWindows}
-            aria-haspopup="listbox"
-            aria-label="Select window to capture"
-            title="Capture Window"
-            className="w-10 h-10 flex items-center justify-center bg-green-500 text-white rounded-lg hover:bg-green-600"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9h16" />
-            </svg>
-          </button>
-
-          {showWindows && windows.length > 0 && (
-            <div
-              role="listbox"
-              aria-label="Available windows"
-              className="absolute top-full mt-2 left-0 w-64 max-h-60 overflow-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10"
-            >
-              {windows.map((w) => (
-                <button
-                  key={w.id}
-                  role="option"
-                  aria-selected={false}
-                  onClick={() => handleCaptureWindow(w.id)}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm truncate dark:text-gray-200"
-                >
-                  <span className="font-medium">{w.app_name}</span>
-                  <span className="text-gray-500 dark:text-gray-400 ml-2">{w.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        
+        <button
+          onClick={openWindowPicker}
+          aria-label="Select window to capture"
+          title="Capture Window"
+          className="w-10 h-10 flex items-center justify-center bg-green-500 text-white rounded-lg hover:bg-green-600"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9h16" />
+          </svg>
+        </button>
       </div>
 
       {/* Clear button */}

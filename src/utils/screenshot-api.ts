@@ -69,6 +69,16 @@ export async function getWindows(): Promise<WindowInfo[]> {
 }
 
 /**
+ * Get thumbnail preview of a window
+ * @param windowId - The window ID to capture
+ * @param maxSize - Maximum width/height of thumbnail (default 200px)
+ * @returns Base64-encoded PNG thumbnail string
+ */
+export async function getWindowThumbnail(windowId: number, maxSize: number = 200): Promise<string> {
+  return await invoke<string>("get_window_thumbnail", { windowId, maxSize });
+}
+
+/**
  * Get list of all monitors
  * @returns Array of MonitorInfo objects
  */

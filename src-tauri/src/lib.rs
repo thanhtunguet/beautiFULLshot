@@ -31,6 +31,7 @@ pub fn run() {
             screenshot::capture_region,
             screenshot::capture_window,
             screenshot::get_windows,
+            screenshot::get_window_thumbnail,
             screenshot::get_monitors,
             permissions::check_screen_permission,
             permissions::check_wayland,

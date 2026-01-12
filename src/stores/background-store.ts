@@ -1,13 +1,26 @@
 // Background store - Zustand state for background beautification
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { GRADIENT_PRESETS, type GradientPreset } from '../data/gradients';
 import { WALLPAPER_PRESETS, type WallpaperPreset } from '../data/wallpapers';
+import {
+  addImageToDB,
+  getAllImagesFromDB,
+  getImageFromDB,
+  removeImageFromDB,
+  clearAllImagesFromDB,
+  trimOldestImages,
+  type StoredImage,
+} from '../utils/image-db';
 
 // Constants - padding stored as percentage (0-50% of smaller image dimension)
 const MIN_PADDING_PERCENT = 0;
 const MAX_PADDING_PERCENT = 50;
 const DEFAULT_PADDING_PERCENT = 5; // 5% default
+
+// Image library constants
+const MAX_LIBRARY_IMAGES = 12; 
 
 // Blur constants for background
 const MIN_BLUR = 0;
@@ -24,7 +37,13 @@ const MIN_CORNER_RADIUS = 0;
 const MAX_CORNER_RADIUS = 100;
 const DEFAULT_CORNER_RADIUS = 12; // Default rounded corners
 
-export type BackgroundType = 'gradient' | 'solid' | 'transparent' | 'wallpaper' | 'image';
+export type BackgroundType = 'gradient' | 'solid' | 'transparent' | 'wallpaper' | 'image' | 'auto';
+
+export interface LibraryImage {
+  id: string;
+  thumbnail: string;
+  timestamp: number;
+}
 
 interface BackgroundState {
   type: BackgroundType;
@@ -33,15 +52,22 @@ interface BackgroundState {
   wallpaper: WallpaperPreset | null;
   customImageUrl: string | null; // User-uploaded image URL
   customImageBytes: Uint8Array | null; // Store bytes for persistence
+  selectedImageId: string | null; // ID of selected image from library (for persistence)
+  autoColor: string | null; // Auto-calculated dominant color from screenshot
   blurAmount: number; // 0-500px blur for background
   shadowBlur: number; // 0-500 shadow blur for screenshot image
   cornerRadius: number; // 0-100px corner radius for screenshot
   paddingPercent: number; // percentage of smaller image dimension
 
+  // Image library (persisted)
+  imageLibrary: LibraryImage[];
+
   // Actions
   setGradient: (gradient: GradientPreset) => void;
   setSolidColor: (color: string) => void;
   setTransparent: () => void;
+  setAuto: () => void;
+  setAutoColor: (color: string) => void;
   setWallpaper: (wallpaper: WallpaperPreset) => void;
   setCustomImage: (url: string, bytes?: Uint8Array) => void;
   clearCustomImage: () => void;
@@ -51,26 +77,78 @@ interface BackgroundState {
   setPaddingPercent: (percent: number) => void;
   // Helper to get pixel padding based on image dimensions
   getPaddingPx: (imageWidth: number, imageHeight: number) => number;
+  // Image library actions (using IndexedDB)
+  loadLibrary: () => Promise<void>;
+  addToLibrary: (fullDataUrl: string, thumbnail: string) => Promise<void>;
+  removeFromLibrary: (id: string) => Promise<void>;
+  selectFromLibrary: (id: string) => Promise<void>;
+  clearLibrary: () => Promise<void>;
   reset: () => void;
 }
 
-export const useBackgroundStore = create<BackgroundState>((set, get) => ({
-  type: 'gradient',
-  gradient: GRADIENT_PRESETS[0], // Default to first gradient
-  solidColor: '#ffffff',
-  wallpaper: null,
-  customImageUrl: null,
-  customImageBytes: null,
-  blurAmount: DEFAULT_BLUR,
-  shadowBlur: DEFAULT_SHADOW,
-  cornerRadius: DEFAULT_CORNER_RADIUS,
-  paddingPercent: DEFAULT_PADDING_PERCENT,
+// Helper to generate unique ID
+const generateId = () => `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Helper to resize image for library storage (thumbnail)
+const resizeImageForLibrary = (dataUrl: string, maxSize: number = 200): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+
+      // Scale down if larger than maxSize
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = (height / width) * maxSize;
+          width = maxSize;
+        } else {
+          width = (width / height) * maxSize;
+          height = maxSize;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } else {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+};
+
+export const useBackgroundStore = create<BackgroundState>()(
+  persist(
+    (set, get) => ({
+      type: 'gradient',
+      gradient: GRADIENT_PRESETS[0], // Default to first gradient
+      solidColor: '#ffffff',
+      wallpaper: null,
+      customImageUrl: null,
+      customImageBytes: null,
+      selectedImageId: null,
+      autoColor: null,
+      blurAmount: DEFAULT_BLUR,
+      shadowBlur: DEFAULT_SHADOW,
+      cornerRadius: DEFAULT_CORNER_RADIUS,
+      paddingPercent: DEFAULT_PADDING_PERCENT,
+      imageLibrary: [],
 
   setGradient: (gradient) => set({ type: 'gradient', gradient }),
 
   setSolidColor: (color) => set({ type: 'solid', solidColor: color }),
 
   setTransparent: () => set({ type: 'transparent' }),
+
+  setAuto: () => set({ type: 'auto' }),
+
+  setAutoColor: (color) => set({ autoColor: color }),
 
   setWallpaper: (wallpaper) => set({ type: 'wallpaper', wallpaper }),
 
@@ -85,9 +163,23 @@ export const useBackgroundStore = create<BackgroundState>((set, get) => ({
       customImageUrl: url,
       customImageBytes: bytes || null,
     });
+
+    // Auto-save to library if we have bytes
+    if (bytes) {
+      // Convert bytes to base64 data URL
+      const blob = new Blob([bytes], { type: 'image/png' });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const fullDataUrl = reader.result as string;
+        // Create small thumbnail for UI preview
+        const thumbnailDataUrl = await resizeImageForLibrary(fullDataUrl, 150);
+        await get().addToLibrary(fullDataUrl, thumbnailDataUrl);
+      };
+      reader.readAsDataURL(blob);
+    }
   },
 
-  clearCustomImage: () => {
+      clearCustomImage: () => {
     const oldUrl = get().customImageUrl;
     if (oldUrl && oldUrl.startsWith('blob:')) {
       URL.revokeObjectURL(oldUrl);
@@ -117,23 +209,158 @@ export const useBackgroundStore = create<BackgroundState>((set, get) => ({
     return Math.round((get().paddingPercent / 100) * smallerDimension);
   },
 
-  reset: () => {
-    // Clean up custom image URL
-    const oldUrl = get().customImageUrl;
-    if (oldUrl && oldUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(oldUrl);
+  // Load library from IndexedDB on app start
+  loadLibrary: async () => {
+    try {
+      const images = await getAllImagesFromDB();
+      const libraryImages: LibraryImage[] = images.map((img) => ({
+        id: img.id,
+        thumbnail: img.thumbnail,
+        timestamp: img.timestamp,
+      }));
+      set({ imageLibrary: libraryImages });
+
+      // If there was a selected image and type is 'image', restore it
+      const { type, selectedImageId } = get();
+      if (type === 'image' && selectedImageId) {
+        // Check if the image still exists in library
+        const exists = libraryImages.some((img) => img.id === selectedImageId);
+        if (exists) {
+          // Load the full image from IndexedDB
+          const image = await getImageFromDB(selectedImageId);
+          if (image) {
+            const response = await fetch(image.dataUrl);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            set({ customImageUrl: url });
+          }
+        } else {
+          // Image was deleted, reset to gradient
+          set({ type: 'gradient', selectedImageId: null });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load image library:', error);
     }
-    set({
-      type: 'gradient',
-      gradient: GRADIENT_PRESETS[0],
-      solidColor: '#ffffff',
-      wallpaper: WALLPAPER_PRESETS[0],
-      customImageUrl: null,
-      customImageBytes: null,
-      blurAmount: DEFAULT_BLUR,
-      shadowBlur: DEFAULT_SHADOW,
-      cornerRadius: DEFAULT_CORNER_RADIUS,
-      paddingPercent: DEFAULT_PADDING_PERCENT,
-    });
   },
-}));
+
+  // Add image to IndexedDB library
+  addToLibrary: async (fullDataUrl, thumbnail) => {
+    try {
+      const id = generateId();
+      const timestamp = Date.now();
+
+      // Store in IndexedDB (full quality image + thumbnail)
+      const storedImage: StoredImage = {
+        id,
+        dataUrl: fullDataUrl,
+        thumbnail,
+        timestamp,
+      };
+      await addImageToDB(storedImage);
+
+      // Trim to max count
+      await trimOldestImages(MAX_LIBRARY_IMAGES);
+
+      // Update state with just thumbnail for UI
+      const newImage: LibraryImage = { id, thumbnail, timestamp };
+      const library = get().imageLibrary;
+      const updatedLibrary = [newImage, ...library].slice(0, MAX_LIBRARY_IMAGES);
+      set({
+        imageLibrary: updatedLibrary,
+        selectedImageId: id, // Save ID for persistence
+      });
+    } catch (error) {
+      console.error('Failed to add image to library:', error);
+    }
+  },
+
+  // Remove image from IndexedDB
+  removeFromLibrary: async (id) => {
+    try {
+      await removeImageFromDB(id);
+      const library = get().imageLibrary;
+      set({ imageLibrary: library.filter((img) => img.id !== id) });
+    } catch (error) {
+      console.error('Failed to remove image:', error);
+    }
+  },
+
+  // Select image from library - loads full quality from IndexedDB
+  selectFromLibrary: async (id) => {
+    try {
+      const image = await getImageFromDB(id);
+      if (!image) return;
+
+      // Revoke previous custom image URL
+      const oldUrl = get().customImageUrl;
+      if (oldUrl && oldUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(oldUrl);
+      }
+
+      // Convert full quality data URL to blob URL for display
+      const response = await fetch(image.dataUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      set({
+        type: 'image',
+        customImageUrl: url,
+        customImageBytes: null,
+        selectedImageId: id, // Save ID for persistence
+      });
+    } catch (error) {
+      console.error('Failed to select image:', error);
+    }
+  },
+
+  // Clear all images from IndexedDB
+  clearLibrary: async () => {
+    try {
+      await clearAllImagesFromDB();
+      set({ imageLibrary: [] });
+    } catch (error) {
+      console.error('Failed to clear library:', error);
+    }
+  },
+
+      reset: () => {
+        // Clean up custom image URL
+        const oldUrl = get().customImageUrl;
+        if (oldUrl && oldUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(oldUrl);
+        }
+        set({
+          type: 'gradient',
+          gradient: GRADIENT_PRESETS[0],
+          solidColor: '#ffffff',
+          wallpaper: WALLPAPER_PRESETS[0],
+          customImageUrl: null,
+          customImageBytes: null,
+          selectedImageId: null,
+          autoColor: null,
+          blurAmount: DEFAULT_BLUR,
+          shadowBlur: DEFAULT_SHADOW,
+          cornerRadius: DEFAULT_CORNER_RADIUS,
+          paddingPercent: DEFAULT_PADDING_PERCENT,
+          // Note: imageLibrary is NOT reset - it persists in IndexedDB
+        });
+      },
+    }),
+    {
+      name: 'background-settings',
+      // Only persist settings values, not runtime state like images/blobs
+      partialize: (state) => ({
+        type: state.type,
+        gradient: state.gradient,
+        solidColor: state.solidColor,
+        wallpaper: state.wallpaper,
+        selectedImageId: state.selectedImageId,
+        blurAmount: state.blurAmount,
+        shadowBlur: state.shadowBlur,
+        cornerRadius: state.cornerRadius,
+        paddingPercent: state.paddingPercent,
+      }),
+    }
+  )
+);

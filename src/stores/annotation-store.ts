@@ -25,8 +25,13 @@ interface AnnotationState {
   fontSize: number;
   fontFamily: string;
 
+  // Number tool counter
+  numberCounter: number;
+
   // Actions
   addAnnotation: (annotation: CreateAnnotation) => string;
+  getNextNumber: () => number;
+  resetNumberCounter: () => void;
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   deleteAnnotation: (id: string) => void;
   deleteSelected: () => void;
@@ -62,10 +67,13 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   currentTool: 'select',
 
   strokeColor: '#ff0000',
-  fillColor: 'rgba(255,0,0,0.3)',
+  fillColor: 'transparent',
   strokeWidth: 2,
   fontSize: 16,
   fontFamily: 'Arial',
+
+  // Number tool counter
+  numberCounter: 1,
 
   // Callbacks for canvas integration (set by canvas-store)
   restoreImageFromHistory: null,
@@ -91,6 +99,16 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       annotations: [...state.annotations, newAnnotation],
     }));
     return id;
+  },
+
+  getNextNumber: () => {
+    const current = get().numberCounter;
+    set({ numberCounter: current + 1 });
+    return current;
+  },
+
+  resetNumberCounter: () => {
+    set({ numberCounter: 1 });
   },
 
   updateAnnotation: (id, updates) => {
@@ -196,6 +214,6 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     // Save current state before clearing
     get().saveToHistory();
     useHistoryStore.getState().clear();
-    set({ annotations: [], selectedId: null });
+    set({ annotations: [], selectedId: null, numberCounter: 1 });
   },
 }));
