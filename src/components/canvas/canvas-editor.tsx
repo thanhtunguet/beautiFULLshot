@@ -37,7 +37,7 @@ export function CanvasEditor() {
   } = useCanvasStore();
 
   const { currentTool, strokeColor, fillColor, strokeWidth } = useAnnotationStore();
-  const { getPaddingPx, shadowBlur } = useBackgroundStore();
+  const { getPaddingPx, shadowBlur, cornerRadius } = useBackgroundStore();
   const { outputAspectRatio } = useExportStore();
   const padding = getPaddingPx(originalWidth, originalHeight);
   const [image] = useImage(imageUrl || '');
@@ -275,6 +275,7 @@ export function CanvasEditor() {
                 image={image}
                 x={padding}
                 y={padding}
+                cornerRadius={cornerRadius}
                 shadowColor="rgba(0, 0, 0, 0.5)"
                 shadowBlur={shadowBlur}
                 shadowOffset={{ x: 0, y: shadowBlur / 4 }}
