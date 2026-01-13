@@ -3,8 +3,8 @@
 ## Project Overview
 BeautyShot is a cross-platform screenshot beautification application built with Tauri 2, React 19, and TypeScript. It enables users to capture screenshots and apply editing/annotation tools for enhanced visual content creation.
 
-**Version:** 1.0.0 (Release)
-**Tech Stack:** Tauri 2 | React 19 | TypeScript | Tailwind CSS 4 | Konva Canvas
+**Version:** 1.0.0 (Production Release)
+**Tech Stack:** Tauri 2 | React 19.1.0 | TypeScript | Tailwind CSS 4 | Konva 9.3.0 | Zustand 5.0.9
 
 ---
 
@@ -64,13 +64,13 @@ interface CanvasState {
 ```
 
 ### 2. Canvas Editor Component
-**File:** `src/components/canvas/canvas-editor.tsx`
+**File:** `src/components/canvas/canvas-editor.tsx` (~379 LOC)
 
 Main Konva-based canvas rendering component:
 - **Responsive:** Auto-resize to container dimensions
 - **Zoom:** Mouse wheel zoom with clamping (0.1x - 5x)
 - **Pan:** Click-drag to pan around canvas
-- **Multi-layer:** Image layer + annotation layer (placeholder for Phase 04)
+- **Multi-layer:** Background layer + Image layer + Crop overlay + Annotation layer
 
 Dependencies: react-konva, Konva.js
 
@@ -314,13 +314,42 @@ interface WindowInfo {
 
 ---
 
-## Known Limitations & TODO
+## Annotation Tools (Phase 04) ✓
 
-- Annotation layer exists but is placeholder (Phase 04)
-- No undo/redo system yet
-- No export functionality (Phase 06)
-- Wayland screenshot support limited (warning displayed)
-- No touch input support yet
+All 7 annotation types fully implemented:
+- **Shapes:** Rectangle, Ellipse with fill/stroke control
+- **Lines:** Direct line + Arrow with customizable pointers
+- **Freehand:** Brush with variable stroke width
+- **Text:** Click-to-place with font family/size selection
+- **Spotlight:** Highlight effect with transparent overlay
+- **Selection:** Move/resize via transformer handles
+- **Undo/Redo:** Full history with 50 snapshot limit
+
+## Export System (Phase 06) ✓
+
+Comprehensive export capabilities:
+- **Formats:** PNG (lossless) + JPEG (quality slider 0.1-1.0)
+- **Resolution:** 1x/2x/3x pixel ratios for scaling
+- **Destinations:** Quick save + Save As dialog with path persistence
+- **Clipboard:** Direct copy to system clipboard
+- **Crop Integration:** Applied during export (non-destructive)
+- **Notifications:** Toast feedback via settings
+
+## Native Integration (Phase 07) ✓
+
+OS-level integration features:
+- **Hotkeys:** Globally registered shortcuts synced with Tauri backend
+- **System Tray:** Minimize/restore via tray icon with menu
+- **Notifications:** System notifications for export status
+- **Themes:** Light/dark/system auto-detection
+- **Settings:** Hotkey customization, auto-save location, minimize to tray
+
+## Known Limitations
+
+- **Wayland:** Limited screenshot support (X11 recommended on Linux)
+- **Touch:** No touch event handling for mobile/tablet devices
+- **Multi-Monitor:** Region capture works on primary monitor only
+- **Clipboard:** PNG-only format (no text or metadata)
 
 ---
 
@@ -383,6 +412,8 @@ Linux desktop entry for:
 
 ---
 
-**Last Updated:** 2025-12-29
-**Phase:** 08 - Polish & Distribution (Latest)
-**Release:** v1.0.0 - Stable
+**Last Updated:** 2026-01-13
+**Phase:** 08 - Polish & Distribution ✓ (Complete)
+**Release:** v1.0.0 - Production Ready
+**Frontend:** ~9,960 LOC across 64 files
+**Backend:** ~688 LOC across 9 Rust files

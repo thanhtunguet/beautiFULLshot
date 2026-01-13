@@ -98,7 +98,7 @@ beautyfullshot/
 |-------|------------|
 | Framework | Tauri v2 |
 | Backend | Rust + xcap |
-| Frontend | React 18 + TypeScript + Vite |
+| Frontend | React 19 + TypeScript + Vite |
 | Canvas | react-konva + Konva |
 | Styling | Tailwind CSS v4 |
 | State | Zustand |

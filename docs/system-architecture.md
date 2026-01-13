@@ -590,21 +590,46 @@ BeautyShot.exe (Windows)
 
 ## Integration Points
 
-### Tauri IPC Commands
+### Tauri IPC Commands (14 Total)
+
+**Screenshot Module:**
 ```rust
-// Backend commands invoked from frontend
 #[tauri::command]
-fn capture_fullscreen() -> Result<Vec<u8>, String> { }
-
-#[tauri::command]
-fn capture_window(window_id: u32) -> Result<Vec<u8>, String> { }
-
-#[tauri::command]
-fn get_windows() -> Result<Vec<WindowInfo>, String> { }
-
-#[tauri::command]
-fn save_file(bytes: Vec<u8>, path: String) -> Result<(), String> { }
+fn capture_fullscreen() -> Result<Vec<u8>, String>        // Base64 PNG
+fn capture_region(x, y, w, h) -> Result<Vec<u8>, String> // Cropped region
+fn capture_window(window_id: u32) -> Result<Vec<u8>, String>
+fn get_monitors() -> Result<Vec<MonitorInfo>, String>
+fn get_windows() -> Result<Vec<WindowInfo>, String>
 ```
+
+**Overlay Module:**
+```rust
+fn create_overlay_window() -> Result<(), String>
+fn close_overlay_window() -> Result<(), String>
+fn get_screenshot_data() -> Result<String, String>       // Base64
+fn clear_screenshot_data() -> Result<(), String>
+```
+
+**File Operations:**
+```rust
+fn save_file(path: String, data: Vec<u8>) -> Result<(), String>  // 50MB limit
+fn get_pictures_dir() -> Result<String, String>
+fn get_desktop_dir() -> Result<String, String>
+```
+
+**Shortcuts & Permissions:**
+```rust
+fn update_shortcuts(capture: String, region: String, window: String) -> Result<(), String>
+fn check_screen_permission() -> Result<bool, String>     // macOS
+fn check_wayland() -> Result<Option<String>, String>     // Linux
+```
+
+### Backend Events Emitted:
+- `overlay-activate` - Overlay window shown
+- `hotkey-capture` - Global Ctrl+Shift+C triggered
+- `hotkey-capture-region` - Global region hotkey triggered
+- `hotkey-capture-window` - Global window hotkey triggered
+- `tray-capture` - System tray capture menu clicked
 
 ### Type Synchronization
 - Frontend types in `src/types/`
@@ -728,7 +753,43 @@ Post-Build:
 
 ---
 
-**Document Version:** 3.0
-**Last Updated:** 2025-12-29
-**Current Phase:** 08 - Polish & Distribution
+---
+
+## Backend Architecture (Rust)
+
+### Module Organization
+```
+src-tauri/src/
+├── main.rs (6 LOC) - Entry point, Windows subsystem config
+├── lib.rs (48 LOC) - Tauri initialization, plugin setup
+├── screenshot.rs (148 LOC) - xcap integration, monitor/window enumeration
+├── overlay.rs (126 LOC) - Fullscreen overlay creation/management
+├── shortcuts.rs (155 LOC) - Global hotkey parsing and registration
+├── file_ops.rs (71 LOC) - Secure file save with path validation
+├── clipboard.rs (39 LOC) - PNG → system clipboard
+├── tray.rs (69 LOC) - System tray icon and menu
+└── permissions.rs (32 LOC) - macOS/Linux permission checks
+```
+**Total:** ~694 LOC
+
+### Security Implementation
+- **File Operations:** Path canonicalization, traversal prevention, 50MB limit
+- **Screenshot:** xcap handles platform-specific capture APIs
+- **Clipboard:** Base64 validation, image dimension checks
+- **Hotkeys:** Input validation on hotkey format strings
+- **Permissions:** macOS Screen Recording check, Wayland detection warning
+
+### Dependencies
+- **xcap** 0.8 - Cross-platform screenshot
+- **image** 0.25 - PNG encoding
+- **base64** 0.22 - Encoding/decoding
+- **arboard** - Clipboard operations
+- **tauri** 2.x - Framework
+- **serde/serde_json** - Serialization
+
+---
+
+**Document Version:** 3.1
+**Last Updated:** 2026-01-13
+**Current Phase:** 08 - Polish & Distribution (Complete ✓)
 **Release Status:** v1.0.0 - Production Ready

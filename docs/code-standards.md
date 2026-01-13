@@ -533,21 +533,26 @@ Enforce aspect ratios during resize:
 
 ## Testing Guidelines
 
-### Unit Tests (To be implemented)
-- Test hooks in isolation
-- Test store actions independently
-- Test component props validation
-- Aim for > 80% coverage
+### Unit Tests ✓
+**Tool:** Vitest with @testing-library/react
+**Coverage:** Test files in `__tests__` directories across stores and utils
+- Test hooks in isolation (useScreenshot, useImage, etc.)
+- Test store actions independently (canvas-store, annotation-store, etc.)
+- Test utility functions (export-utils, screenshot-api)
+- Current coverage: Estimated 70%+
+- Target: > 80% coverage
 
-### Integration Tests (To be implemented)
+### Integration Tests ✓
 - Test capture → store → render flow
-- Test zoom/pan interactions
-- Test error handling
+- Test zoom/pan interactions via Konva events
+- Test error handling and permission checks
+- Test cross-store communication (annotation ↔ canvas)
 
-### E2E Tests (To be implemented)
-- Test complete screenshot workflow
-- Test export functionality
-- Cross-platform validation
+### E2E Tests ✓
+- Test complete screenshot workflow (capture → edit → export)
+- Test export to PNG/JPEG formats
+- Test annotation tool interactions
+- Platform-specific testing via CI/CD matrix
 
 ---
 
@@ -629,6 +634,67 @@ Before submitting PR, ensure:
 
 ---
 
-**Document Version:** 2.0
-**Last Updated:** 2025-12-29
-**Phase:** 05 - Beautification & Cropping
+---
+
+## Phase 06-08 Implementation Details
+
+### Phase 06: Export System (Complete ✓)
+**Files Added:**
+- `stores/export-store.ts` - Export settings with persistence
+- `stores/history-store.ts` - Undo/redo with image snapshots (50 limit)
+- `components/sidebar/export-panel.tsx` - Export UI controls
+- `utils/export-utils.ts` - Canvas render, crop apply, format conversion
+
+**Key Patterns:**
+```typescript
+// Persistent export settings
+export const useExportStore = create<ExportState>(
+  (set) => ({
+    format: 'png',
+    quality: 0.9,
+    pixelRatio: 1,
+    outputAspectRatio: 'auto',
+    lastSavePath: null,
+    // ... actions
+  }),
+  { name: 'beautyshot-export-settings' }  // localStorage key
+);
+
+// Aspect ratio extension calculation
+const calculateAspectRatioExtend = (imageSize, targetRatio) => {
+  // Extends canvas while keeping image centered
+};
+```
+
+### Phase 07: Native Integration (Complete ✓)
+**Files Added:**
+- `stores/settings-store.ts` - Hotkey/behavior/theme preferences
+- `stores/ui-store.ts` - Transient UI state (modals, windows)
+- `components/settings/settings-modal.tsx` - Settings UI
+- `hooks/use-hotkeys.ts` - Global hotkey event listener
+- `hooks/use-sync-shortcuts.ts` - Backend sync
+- `hooks/use-keyboard-shortcuts.ts` - In-app shortcuts (Ctrl+Z, etc.)
+
+**Backend Commands Added:**
+- `update_shortcuts(capture, region, window)` - Global hotkey registration
+- `check_screen_permission()` - macOS Screen Recording check
+- `check_wayland()` - Linux Wayland detection
+- System tray menu with capture, show, quit actions
+
+### Phase 08: Distribution & Packaging (Complete ✓)
+**Platform Build Config:**
+- macOS: Universal binary, DMG installer, entitlements for screen recording
+- Windows: NSIS installer with language selector
+- Linux: AppImage + DEB packages with dependencies
+
+**CI/CD Automation:**
+- GitHub Actions with multi-platform matrix (macOS, Windows, Linux)
+- Auto-signing with TAURI_SIGNING_PRIVATE_KEY
+- Release automation on version tags
+- Test suite runs pre-build
+
+---
+
+**Document Version:** 2.1
+**Last Updated:** 2026-01-13
+**Phase:** 08 - Polish & Distribution (Complete ✓)
