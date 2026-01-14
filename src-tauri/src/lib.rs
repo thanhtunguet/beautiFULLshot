@@ -1,7 +1,7 @@
 // BeautyFullShot - Screenshot Beautification App
 // Tauri commands: https://tauri.app/develop/calling-rust/
 
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 
 mod clipboard;
 mod file_ops;
@@ -28,6 +28,24 @@ pub fn run() {
             // to avoid fullscreen white screen at startup
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Intercept close request on main window - hide instead of quit
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    // Prevent default close behavior
+                    api.prevent_close();
+                    // Hide window instead
+                    let _ = window.hide();
+
+                    // On macOS, also hide from dock when window is hidden
+                    #[cfg(target_os = "macos")]
+                    {
+                        let app = window.app_handle();
+                        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             screenshot::capture_fullscreen,
@@ -59,6 +77,9 @@ pub fn run() {
             // Handle macOS dock click to reopen window
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = _event {
+                // Restore dock icon
+                let _ = _app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
                 if let Some(window) = _app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();

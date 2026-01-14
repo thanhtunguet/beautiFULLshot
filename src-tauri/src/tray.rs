@@ -12,12 +12,12 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let capture_item = MenuItem::with_id(app, "capture", "Capture Screen", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit BeautyShot", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit beautiFULLshot", true, None::<&str>)?;
 
     // Build menu
     let menu = Menu::with_items(app, &[&capture_item, &separator, &show_item, &quit_item])?;
 
-    // Get app icon with fallback
+    // Get app icon for tray
     let icon = app
         .default_window_icon()
         .cloned()
@@ -25,15 +25,21 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
 
     // Build tray icon
     let _tray = TrayIconBuilder::<R>::new()
-        .icon(icon)
+        .icon(icon.clone())
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("BeautyShot")
+        .tooltip("beautiFULLshot")
+        // macOS: don't use template mode so colorful icons display correctly
+        .icon_as_template(false)
         .on_menu_event(|app: &AppHandle<R>, event| match event.id.as_ref() {
             "quit" => {
                 app.exit(0);
             }
             "show" => {
+                // On macOS, restore dock icon before showing window
+                #[cfg(target_os = "macos")]
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
@@ -57,6 +63,11 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
+
+                // On macOS, restore dock icon before showing window
+                #[cfg(target_os = "macos")]
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
