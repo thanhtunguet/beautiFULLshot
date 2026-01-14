@@ -55,10 +55,11 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
+        .run(|_app, _event| {
             // Handle macOS dock click to reopen window
-            if let RunEvent::Reopen { .. } = event {
-                if let Some(window) = app.get_webview_window("main") {
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Reopen { .. } = _event {
+                if let Some(window) = _app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
                     let _ = window.set_focus();
