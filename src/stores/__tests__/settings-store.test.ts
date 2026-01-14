@@ -133,7 +133,8 @@ describe('Settings Store', () => {
       useSettingsStore.getState().resetToDefaults();
 
       const state = useSettingsStore.getState();
-      expect(state.hotkeys.capture).toBe('CommandOrControl+Shift+C');
+      // Check reset to actual DEFAULT_HOTKEYS from settings-store.ts
+      expect(state.hotkeys.capture).toBe('CommandOrControl+Option+1');
       expect(state.closeToTray).toBe(true);
       expect(state.saveLocation).toBe('pictures');
       expect(state.customSavePath).toBeNull();

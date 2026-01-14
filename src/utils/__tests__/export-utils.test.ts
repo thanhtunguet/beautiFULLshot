@@ -26,11 +26,26 @@ interface MockStageConfig {
 interface MockStage {
   toDataURL: ReturnType<typeof vi.fn>;
   toBlob: ReturnType<typeof vi.fn>;
+  x: ReturnType<typeof vi.fn>;
+  y: ReturnType<typeof vi.fn>;
+  scaleX: ReturnType<typeof vi.fn>;
+  scaleY: ReturnType<typeof vi.fn>;
+  position: ReturnType<typeof vi.fn>;
+  scale: ReturnType<typeof vi.fn>;
 }
 
 // Mock Konva Stage for testing
 const createMockStage = (): Konva.Stage & MockStage => {
   const mockStage = {
+    // Transform getters (used to save state before export)
+    x: vi.fn(() => 0),
+    y: vi.fn(() => 0),
+    scaleX: vi.fn(() => 1),
+    scaleY: vi.fn(() => 1),
+    // Transform setters (used to reset/restore state during export)
+    position: vi.fn(),
+    scale: vi.fn(),
+    // Export methods
     toDataURL: vi.fn().mockReturnValue(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg=='
     ),
@@ -259,6 +274,12 @@ describe('Export Utils', () => {
 
     it('should reject on blob creation failure', async () => {
       const failStage = {
+        x: vi.fn(() => 0),
+        y: vi.fn(() => 0),
+        scaleX: vi.fn(() => 1),
+        scaleY: vi.fn(() => 1),
+        position: vi.fn(),
+        scale: vi.fn(),
         toDataURL: vi.fn(),
         toBlob: vi.fn((config: MockStageConfig) => {
           if (config.callback) {
