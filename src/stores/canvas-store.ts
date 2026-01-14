@@ -49,7 +49,7 @@ interface CanvasState {
 
 // Helper: Create blob URL from bytes
 function bytesToUrl(bytes: Uint8Array): string {
-  const blob = new Blob([bytes], { type: 'image/png' });
+  const blob = new Blob([bytes as any], { type: 'image/png' });
   return URL.createObjectURL(blob);
 }
 
@@ -105,7 +105,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setStageSize: (width, height) => set({ stageWidth: width, stageHeight: height }),
 
-  setScale: (scale) => set({ scale: Math.max(ZOOM.MIN_SCALE, Math.min(ZOOM.MAX_SCALE, scale)) }),
+  setScale: (newScale) => {
+    const { stageWidth, stageHeight, scale: oldScale, position } = get();
+
+    // Clamp the new scale
+    const clampedScale = Math.max(ZOOM.MIN_SCALE, Math.min(ZOOM.MAX_SCALE, newScale));
+
+    // Calculate canvas center as the zoom anchor point
+    const centerX = stageWidth / 2;
+    const centerY = stageHeight / 2;
+
+    // Calculate the canvas point that is currently at the center
+    const canvasPointX = (centerX - position.x) / oldScale;
+    const canvasPointY = (centerY - position.y) / oldScale;
+
+    // Calculate new position so that the same canvas point stays at center
+    const newX = centerX - canvasPointX * clampedScale;
+    const newY = centerY - canvasPointY * clampedScale;
+
+    set({
+      scale: clampedScale,
+      position: { x: newX, y: newY }
+    });
+  },
 
   setPosition: (x, y) => set({ position: { x, y } }),
 

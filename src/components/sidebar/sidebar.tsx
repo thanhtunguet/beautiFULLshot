@@ -46,8 +46,8 @@ export function Sidebar() {
 
         {activeTab === 'edit' && (
           <>
-            <BackgroundPanel />
             <CropPanel />
+            <BackgroundPanel />
           </>
         )}
 

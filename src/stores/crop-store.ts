@@ -53,6 +53,7 @@ export const useCropStore = create<CropState>((set) => ({
     set({
       isCropping: false,
       cropRect: null,
+      aspectRatio: null,
     }),
 
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),

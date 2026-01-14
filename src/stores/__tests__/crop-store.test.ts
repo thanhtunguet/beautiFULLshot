@@ -131,21 +131,21 @@ describe('Crop Store', () => {
       expect(useCropStore.getState().isCropping).toBe(false);
     });
 
-    it('should preserve crop rect when applied', () => {
+    it('should clear crop rect when applied (image dimensions change)', () => {
       const rect: CropRect = { x: 10, y: 10, width: 100, height: 100 };
       useCropStore.getState().startCrop();
       useCropStore.getState().setCropRect(rect);
 
       useCropStore.getState().applyCrop();
 
-      expect(useCropStore.getState().cropRect).toEqual(rect);
+      expect(useCropStore.getState().cropRect).toBeNull();
     });
 
-    it('should preserve aspect ratio when applied', () => {
+    it('should clear aspect ratio when applied (fresh state for new image)', () => {
       useCropStore.getState().startCrop(16 / 9);
       useCropStore.getState().applyCrop();
 
-      expect(useCropStore.getState().aspectRatio).toBe(16 / 9);
+      expect(useCropStore.getState().aspectRatio).toBeNull();
     });
   });
 
@@ -166,21 +166,21 @@ describe('Crop Store', () => {
       expect(useCropStore.getState().cropRect).toBeNull();
     });
 
-    it('should preserve aspect ratio', () => {
+    it('should clear aspect ratio when canceled (fresh state)', () => {
       useCropStore.getState().startCrop(1);
       useCropStore.getState().setCropRect({ x: 10, y: 10, width: 100, height: 100 });
 
       useCropStore.getState().cancelCrop();
 
-      expect(useCropStore.getState().aspectRatio).toBe(1);
+      expect(useCropStore.getState().aspectRatio).toBeNull();
     });
 
-    it('should cancel without affecting previously set ratio', () => {
+    it('should clear aspect ratio on cancel for fresh next session', () => {
       useCropStore.getState().setAspectRatio(16 / 9);
       useCropStore.getState().startCrop(1);
       useCropStore.getState().cancelCrop();
 
-      expect(useCropStore.getState().aspectRatio).toBe(1);
+      expect(useCropStore.getState().aspectRatio).toBeNull();
     });
   });
 
@@ -243,10 +243,11 @@ describe('Crop Store', () => {
       useCropStore.getState().setCropRect(rect);
       expect(useCropStore.getState().cropRect).toEqual(rect);
 
-      // Apply crop
+      // Apply crop - state cleared for new image dimensions
       useCropStore.getState().applyCrop();
       expect(useCropStore.getState().isCropping).toBe(false);
-      expect(useCropStore.getState().cropRect).toEqual(rect); // Preserved
+      expect(useCropStore.getState().cropRect).toBeNull();
+      expect(useCropStore.getState().aspectRatio).toBeNull();
     });
 
     it('should handle cancel workflow', () => {
@@ -254,12 +255,12 @@ describe('Crop Store', () => {
       useCropStore.getState().startCrop(1);
       useCropStore.getState().setCropRect({ x: 5, y: 5, width: 100, height: 100 });
 
-      // Cancel crop
+      // Cancel crop - state cleared for fresh next session
       useCropStore.getState().cancelCrop();
 
       expect(useCropStore.getState().isCropping).toBe(false);
       expect(useCropStore.getState().cropRect).toBeNull();
-      expect(useCropStore.getState().aspectRatio).toBe(1); // Preserved
+      expect(useCropStore.getState().aspectRatio).toBeNull();
     });
 
     it('should support changing aspect ratio mid-crop', () => {

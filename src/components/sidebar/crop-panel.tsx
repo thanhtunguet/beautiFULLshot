@@ -13,6 +13,7 @@ export function CropPanel() {
   const applyCrop = useCropStore((state) => state.applyCrop);
   const cancelCrop = useCropStore((state) => state.cancelCrop);
   const setAspectRatio = useCropStore((state) => state.setAspectRatio);
+  const setCropRect = useCropStore((state) => state.setCropRect);
   const imageUrl = useCanvasStore((state) => state.imageUrl);
   const originalWidth = useCanvasStore((state) => state.originalWidth);
   const originalHeight = useCanvasStore((state) => state.originalHeight);
@@ -20,6 +21,72 @@ export function CropPanel() {
 
   // Disable crop if no image loaded
   const canCrop = imageUrl !== null && originalWidth > 0;
+
+  // Handle aspect ratio change - recalculate crop rect to match new ratio
+  const handleAspectRatioChange = (newRatio: number | null) => {
+    setAspectRatio(newRatio);
+
+    // Get current rect or default
+    const currentRect = cropRect || {
+      x: originalWidth * 0.1,
+      y: originalHeight * 0.1,
+      width: originalWidth * 0.8,
+      height: originalHeight * 0.8,
+    };
+
+    // For freeform (null ratio), keep current rect as-is
+    if (newRatio === null) {
+      setCropRect(currentRect);
+      return;
+    }
+
+    // Calculate new dimensions maintaining center point
+    const centerX = currentRect.x + currentRect.width / 2;
+    const centerY = currentRect.y + currentRect.height / 2;
+
+    let newWidth: number;
+    let newHeight: number;
+
+    // Determine new size based on aspect ratio, fitting within current rect area
+    const currentRatio = currentRect.width / currentRect.height;
+    if (newRatio > currentRatio) {
+      // New ratio is wider - use current width, calculate height
+      newWidth = currentRect.width;
+      newHeight = newWidth / newRatio;
+    } else {
+      // New ratio is taller - use current height, calculate width
+      newHeight = currentRect.height;
+      newWidth = newHeight * newRatio;
+    }
+
+    // Calculate new position (centered on same point)
+    let newX = centerX - newWidth / 2;
+    let newY = centerY - newHeight / 2;
+
+    // Clamp to image bounds
+    if (newX < 0) newX = 0;
+    if (newY < 0) newY = 0;
+    if (newX + newWidth > originalWidth) newX = originalWidth - newWidth;
+    if (newY + newHeight > originalHeight) newY = originalHeight - newHeight;
+
+    // If still out of bounds (rect too large), scale down
+    if (newX < 0 || newY < 0) {
+      const scaleX = originalWidth / newWidth;
+      const scaleY = originalHeight / newHeight;
+      const scale = Math.min(scaleX, scaleY) * 0.9; // 90% of max to leave margin
+      newWidth *= scale;
+      newHeight *= scale;
+      newX = (originalWidth - newWidth) / 2;
+      newY = (originalHeight - newHeight) / 2;
+    }
+
+    setCropRect({
+      x: Math.max(0, newX),
+      y: Math.max(0, newY),
+      width: newWidth,
+      height: newHeight,
+    });
+  };
 
   const handleStartCrop = () => {
     if (canCrop) {
@@ -66,7 +133,7 @@ export function CropPanel() {
             {ASPECT_RATIOS.map((ar) => (
               <button
                 key={ar.id}
-                onClick={() => setAspectRatio(ar.ratio)}
+                onClick={() => handleAspectRatioChange(ar.ratio)}
                 className={`px-2 py-1.5 text-sm rounded transition-colors ${
                   aspectRatio === ar.ratio
                     ? 'bg-blue-500 text-white'
