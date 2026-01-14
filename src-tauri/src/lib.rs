@@ -1,10 +1,15 @@
 // BeautyFullShot - Screenshot Beautification App
 // Tauri commands: https://tauri.app/develop/calling-rust/
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Manager, RunEvent, WindowEvent};
 
 #[cfg(target_os = "macos")]
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+
+/// Global flag to track if app should actually quit (from tray menu)
+/// vs just hide to tray (from Cmd+Q or window close)
+pub static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
 mod clipboard;
 mod file_ops;
@@ -142,9 +147,16 @@ pub fn run() {
         .run(|app, event| {
             match &event {
                 // Handle Cmd+Q (macOS) - hide to tray instead of quit
+                // Unless SHOULD_QUIT flag is set (from tray menu quit)
                 #[cfg(target_os = "macos")]
                 RunEvent::ExitRequested { api, .. } => {
-                    // Prevent app from quitting
+                    // Check if we should actually quit (set by tray menu)
+                    if SHOULD_QUIT.load(Ordering::SeqCst) {
+                        // Allow exit - don't call prevent_exit()
+                        return;
+                    }
+
+                    // Prevent app from quitting (hide to tray instead)
                     api.prevent_exit();
 
                     // Hide main window to tray

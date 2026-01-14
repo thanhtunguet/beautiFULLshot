@@ -76,7 +76,7 @@ function PermissionItem({
           onClick={onOpenSettings}
           className="px-4 py-2 glass-btn glass-btn-active text-orange-500 text-sm font-medium rounded-xl transition-all shrink-0"
         >
-          Enable
+          Grant
         </button>
       )}
     </div>
@@ -117,37 +117,21 @@ export function PermissionRequired({ onAllGranted }: PermissionRequiredProps) {
     checkPermissions();
   }, [checkPermissions]);
 
+  // Directly open settings without triggering system dialogs
   const openScreenSettings = useCallback(async () => {
     try {
-      // request_screen_permission now returns true if permission is granted
-      // and handles opening settings if not
-      const granted = await invoke<boolean>('request_screen_permission');
-      if (granted) {
-        setPermissions(prev => ({ ...prev, screenRecording: true }));
-      }
-    } catch (error) {
-      console.error('Failed to request screen permission:', error);
-      // Fallback
       await invoke('open_screen_recording_settings');
+    } catch (error) {
+      console.error('Failed to open screen recording settings:', error);
     }
   }, []);
 
+  // Directly open settings without triggering system dialogs
   const openAccessibilitySettings = useCallback(async () => {
     try {
-      const granted = await invoke<boolean>('request_accessibility_permission');
-      if (granted) {
-        setPermissions(prev => ({ ...prev, accessibility: true }));
-      } else {
-        // If not granted, generic prompt might have appeared,
-        // but often we still need to open settings for them to toggle it.
-        // macos_accessibility_client prompts, but doesn't auto-open settings if I recall correctly?
-        // Actually it might be safer to open settings if false is returned.
-        // Let's defer to opening settings if it returns false.
-        await invoke('open_accessibility_settings');
-      }
-    } catch (error) {
-      console.error('Failed to request accessibility permission:', error);
       await invoke('open_accessibility_settings');
+    } catch (error) {
+      console.error('Failed to open accessibility settings:', error);
     }
   }, []);
 
@@ -179,17 +163,17 @@ export function PermissionRequired({ onAllGranted }: PermissionRequiredProps) {
         <div className="p-6 space-y-4">
           {/* Permission items */}
           <PermissionItem
-            title="Screen Recording"
-            description="Required to capture screenshots"
-            granted={permissions.screenRecording}
-            onOpenSettings={openScreenSettings}
-          />
-
-          <PermissionItem
             title="Accessibility"
             description="Required for global keyboard shortcuts"
             granted={permissions.accessibility}
             onOpenSettings={openAccessibilitySettings}
+          />
+
+          <PermissionItem
+            title="Screen Recording"
+            description="Required to capture screenshots"
+            granted={permissions.screenRecording}
+            onOpenSettings={openScreenSettings}
           />
 
           {/* Instructions */}

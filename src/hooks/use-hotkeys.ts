@@ -192,16 +192,26 @@ export function useHotkeys(): void {
 
   useEffect(() => {
     // Use variables to track unlisten functions for cleaner cleanup
-    let unlistenTray: (() => void) | null = null;
+    let unlistenTrayScreen: (() => void) | null = null;
+    let unlistenTrayRegion: (() => void) | null = null;
+    let unlistenTrayWindow: (() => void) | null = null;
     let unlistenHotkey: (() => void) | null = null;
     let unlistenHotkeyRegion: (() => void) | null = null;
     let unlistenHotkeyWindow: (() => void) | null = null;
     let unlistenRegionSelected: (() => void) | null = null;
     let unlistenRegionCancelled: (() => void) | null = null;
 
-    // Listen for tray capture menu event
-    listen('tray-capture', () => handleCapture()).then((fn) => {
-      unlistenTray = fn;
+    // Listen for tray capture menu events
+    listen('tray-capture-screen', () => handleCapture()).then((fn) => {
+      unlistenTrayScreen = fn;
+    });
+
+    listen('tray-capture-region', () => handleCaptureRegion()).then((fn) => {
+      unlistenTrayRegion = fn;
+    });
+
+    listen('tray-capture-window', () => handleCaptureWindow()).then((fn) => {
+      unlistenTrayWindow = fn;
     });
 
     // Listen for global hotkey events
@@ -232,7 +242,9 @@ export function useHotkeys(): void {
 
     // Cleanup listeners on unmount
     return () => {
-      unlistenTray?.();
+      unlistenTrayScreen?.();
+      unlistenTrayRegion?.();
+      unlistenTrayWindow?.();
       unlistenHotkey?.();
       unlistenHotkeyRegion?.();
       unlistenHotkeyWindow?.();
