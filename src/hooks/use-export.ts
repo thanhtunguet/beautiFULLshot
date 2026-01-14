@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
+import { invoke } from '@tauri-apps/api/core';
 import { useExportStore } from '../stores/export-store';
 import { toast } from '../stores/toast-store';
 import { useCanvasStore } from '../stores/canvas-store';
@@ -122,7 +122,7 @@ export function useExport() {
 
   /**
    * Copy image to clipboard with loading state
-   * Uses Tauri's clipboard plugin for native clipboard access
+   * Uses custom Rust command with arboard for reliable clipboard access on macOS
    */
   const copyToClipboard = useCallback(async () => {
     if (isExporting) return false;
@@ -139,8 +139,8 @@ export function useExport() {
       // Convert data URL to base64 (remove data:image/png;base64, prefix)
       const base64Data = dataURL.split(',')[1];
 
-      // Use Tauri's clipboard plugin to write image
-      await writeImage(base64Data);
+      // Use custom Rust command with arboard crate for reliable clipboard
+      await invoke('copy_image_to_clipboard', { base64Data });
 
       await notify('Copied!', 'Image copied to clipboard');
 
