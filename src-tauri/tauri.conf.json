@@ -55,7 +55,7 @@
       "minimumSystemVersion": "11.0",
       "entitlements": "entitlements.plist",
       "exceptionDomain": null,
-      "signingIdentity": "-"
+      "signingIdentity": null
     },
     "linux": {
       "appimage": {
