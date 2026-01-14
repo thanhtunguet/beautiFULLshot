@@ -17,9 +17,9 @@ import { extractDominantColor } from '../../utils/color-extractor';
 type TabType = 'wallpaper' | 'gradient' | 'color' | 'image';
 
 // Icons
-const StarIcon = () => (
+const BriefcaseIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
   </svg>
 );
 
@@ -83,7 +83,7 @@ export function BackgroundPanel() {
   });
 
   // Active wallpaper category
-  const [activeCategory, setActiveCategory] = useState('favorites');
+  const [activeCategory, setActiveCategory] = useState('professional');
 
   // Auto-extract dominant color when image changes
   useEffect(() => {
@@ -165,6 +165,13 @@ export function BackgroundPanel() {
 
   // Get wallpaper thumbnail style
   const getWallpaperStyle = (wp: typeof WALLPAPER_PRESETS[0]) => {
+    if (wp.thumbnailUrl) {
+      return {
+        backgroundImage: `url(${wp.thumbnailUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      };
+    }
     const parsed = parseWallpaperUrl(wp.url);
     if (parsed.type === 'gradient') {
       return { background: parsed.value };
@@ -189,11 +196,10 @@ export function BackgroundPanel() {
           <button
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
-            className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'bg-gray-700 text-white dark:bg-gray-600'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-            }`}
+            className={`flex-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${activeTab === tab.id
+              ? 'bg-gray-700 text-white dark:bg-gray-600'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
           >
             {tab.label}
           </button>
@@ -209,13 +215,12 @@ export function BackgroundPanel() {
               <button
                 key={category.id}
                 onClick={() => setActiveCategory(category.id)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                  activeCategory === category.id
-                    ? 'bg-gray-700 text-white dark:bg-gray-600'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${activeCategory === category.id
+                  ? 'bg-gray-700 text-white dark:bg-gray-600'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
               >
-                {category.id === 'favorites' && <StarIcon />}
+                {category.id === 'professional' && <BriefcaseIcon />}
                 {category.name}
               </button>
             ))}
@@ -236,11 +241,10 @@ export function BackgroundPanel() {
               <button
                 key={wp.id}
                 onClick={() => setWallpaper(wp)}
-                className={`aspect-square rounded-lg overflow-hidden transition-all ${
-                  type === 'wallpaper' && wallpaper?.id === wp.id
-                    ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
-                    : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
-                }`}
+                className={`aspect-square rounded-lg overflow-hidden transition-all ${type === 'wallpaper' && wallpaper?.id === wp.id
+                  ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
+                  : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
+                  }`}
                 style={getWallpaperStyle(wp)}
                 title={wp.name}
               />
@@ -256,11 +260,10 @@ export function BackgroundPanel() {
             <button
               key={preset.id}
               onClick={() => setGradient(preset)}
-              className={`w-8 h-8 rounded transition-all ${
-                type === 'gradient' && gradient?.id === preset.id
-                  ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
-                  : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
-              }`}
+              className={`w-8 h-8 rounded transition-all ${type === 'gradient' && gradient?.id === preset.id
+                ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
+                : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
+                }`}
               style={{
                 background: `linear-gradient(${preset.angle || 135}deg, ${preset.colors.join(', ')})`,
               }}
@@ -278,11 +281,10 @@ export function BackgroundPanel() {
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Auto (from screenshot)</p>
             <button
               onClick={setAuto}
-              className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-all ${
-                type === 'auto'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500'
-                  : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-              }`}
+              className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-all ${type === 'auto'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500'
+                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+                }`}
               title="Auto color from screenshot"
             >
               <div
@@ -304,22 +306,20 @@ export function BackgroundPanel() {
               <button
                 key={c.id}
                 onClick={() => setSolidColor(c.color)}
-                className={`w-8 h-8 rounded border border-gray-300 dark:border-gray-600 transition-all ${
-                  type === 'solid' && solidColor === c.color
-                    ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
-                    : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
-                }`}
+                className={`w-8 h-8 rounded border border-gray-300 dark:border-gray-600 transition-all ${type === 'solid' && solidColor === c.color
+                  ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
+                  : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
+                  }`}
                 style={{ background: c.color }}
                 title={c.name}
               />
             ))}
             <button
               onClick={setTransparent}
-              className={`w-8 h-8 rounded border border-gray-300 dark:border-gray-600 transition-all ${
-                type === 'transparent'
-                  ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
-                  : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
-              }`}
+              className={`w-8 h-8 rounded border border-gray-300 dark:border-gray-600 transition-all ${type === 'transparent'
+                ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-900'
+                : 'hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-600'
+                }`}
               style={{
                 background: 'repeating-linear-gradient(45deg, #ccc, #ccc 3px, #fff 3px, #fff 6px)',
               }}
@@ -350,11 +350,10 @@ export function BackgroundPanel() {
             onClick={() => fileInputRef.current?.click()}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
-              type === 'image' && customImageUrl
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-            }`}
+            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${type === 'image' && customImageUrl
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+              }`}
           >
             {type === 'image' && customImageUrl ? (
               <div className="space-y-2">
