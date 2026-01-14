@@ -1,4 +1,4 @@
-// TextShape - Text annotation component
+// TextShape - Text annotation component with double-click editing
 
 import { Text } from 'react-konva';
 import type { TextAnnotation } from '../../../types/annotations';
@@ -10,10 +10,15 @@ interface Props {
 }
 
 export function TextShape({ annotation }: Props) {
-  const { updateAnnotation, setSelected } = useAnnotationStore();
+  const { updateAnnotation, setSelected, setEditingTextId, editingTextId } = useAnnotationStore();
   const handleTransformEnd = useTransformHandler(annotation.id, 'text', {
     fontSize: annotation.fontSize,
   });
+
+  // Hide text when editing (overlay will show input)
+  if (editingTextId === annotation.id) {
+    return null;
+  }
 
   return (
     <Text
@@ -26,8 +31,22 @@ export function TextShape({ annotation }: Props) {
       fill={annotation.fill}
       rotation={annotation.rotation}
       draggable={annotation.draggable}
-      onClick={() => setSelected(annotation.id)}
-      onTap={() => setSelected(annotation.id)}
+      onClick={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
+      onTap={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
+      onDblClick={(e) => {
+        e.cancelBubble = true;
+        setEditingTextId(annotation.id);
+      }}
+      onDblTap={(e) => {
+        e.cancelBubble = true;
+        setEditingTextId(annotation.id);
+      }}
       onDragEnd={(e) => {
         updateAnnotation(annotation.id, {
           x: e.target.x(),

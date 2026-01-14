@@ -62,7 +62,7 @@ pub fn init_overlay_window(app: &AppHandle) -> Result<(), Box<dyn std::error::Er
 }
 
 /// Show overlay window for region selection
-/// Captures screenshot first, then shows the existing overlay
+/// Creates overlay on-demand if not exists, captures screenshot, then shows
 #[tauri::command]
 pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
     // Capture screenshot BEFORE showing overlay
@@ -74,15 +74,34 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
         *data = Some(screenshot_base64);
     }
 
-    // Get overlay window
-    let window = app
-        .get_webview_window("region-overlay")
-        .ok_or("Overlay window not found")?;
+    // Get or create overlay window
+    let window = match app.get_webview_window("region-overlay") {
+        Some(w) => w,
+        None => {
+            // Create overlay window on-demand (invisible until frontend shows it)
+            WebviewWindowBuilder::new(
+                &app,
+                "region-overlay",
+                WebviewUrl::App("overlay.html".into()),
+            )
+            .title("")
+            .fullscreen(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .closable(true)
+            .resizable(false)
+            .visible(false) // Keep hidden until frontend loads screenshot
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
 
-    // Ensure fullscreen mode is set
+    // Ensure fullscreen mode is set (don't show yet - frontend will show after screenshot loads)
     let _ = window.set_fullscreen(true);
 
-    // Notify overlay to refresh and show
+    // Notify overlay to load screenshot and show itself
     let _ = window.emit("overlay-activate", ());
 
     Ok(())

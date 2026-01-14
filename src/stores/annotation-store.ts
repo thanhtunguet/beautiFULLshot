@@ -16,6 +16,7 @@ type CreateAnnotation = Omit<Annotation, 'id'>;
 interface AnnotationState {
   annotations: Annotation[];
   selectedId: string | null;
+  editingTextId: string | null;
   currentTool: ToolType;
 
   // Tool settings
@@ -36,6 +37,8 @@ interface AnnotationState {
   deleteAnnotation: (id: string) => void;
   deleteSelected: () => void;
   setSelected: (id: string | null) => void;
+  setEditingTextId: (id: string | null) => void;
+  updateTextContent: (id: string, text: string) => void;
   setTool: (tool: ToolType) => void;
 
   // Settings
@@ -64,6 +67,7 @@ interface AnnotationState {
 export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   annotations: [],
   selectedId: null,
+  editingTextId: null,
   currentTool: 'select',
 
   strokeColor: '#ff0000',
@@ -137,15 +141,113 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     }
   },
 
-  setSelected: (id) => set({ selectedId: id }),
+  setSelected: (id) => set({ selectedId: id, editingTextId: null }),
 
-  setTool: (tool) => set({ currentTool: tool, selectedId: null }),
+  setEditingTextId: (id) => set({ editingTextId: id }),
 
-  setStrokeColor: (color) => set({ strokeColor: color }),
-  setFillColor: (color) => set({ fillColor: color }),
-  setStrokeWidth: (width) => set({ strokeWidth: width }),
-  setFontSize: (size) => set({ fontSize: size }),
-  setFontFamily: (family) => set({ fontFamily: family }),
+  updateTextContent: (id, text) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      // Delete annotation if text is empty
+      get().deleteAnnotation(id);
+    } else {
+      get().updateAnnotation(id, { text: trimmed });
+    }
+    set({ editingTextId: null });
+  },
+
+  setTool: (tool) => set({ currentTool: tool, selectedId: null, editingTextId: null }),
+
+  setStrokeColor: (color) => {
+    const { selectedId, annotations } = get();
+    // Update selected annotation if exists
+    if (selectedId) {
+      const selected = annotations.find((a) => a.id === selectedId);
+      if (selected) {
+        get().saveToHistory();
+        set((state) => ({
+          strokeColor: color,
+          annotations: state.annotations.map((a) => {
+            if (a.id !== selectedId) return a;
+            // Update appropriate color property based on annotation type
+            if (a.type === 'text') return { ...a, fill: color } as Annotation;
+            if (a.type === 'number') return { ...a, fill: color } as Annotation;
+            return { ...a, stroke: color } as Annotation;
+          }),
+        }));
+        return;
+      }
+    }
+    set({ strokeColor: color });
+  },
+  setFillColor: (color) => {
+    const { selectedId, annotations } = get();
+    if (selectedId) {
+      const selected = annotations.find((a) => a.id === selectedId);
+      if (selected && (selected.type === 'rectangle' || selected.type === 'ellipse')) {
+        get().saveToHistory();
+        set((state) => ({
+          fillColor: color,
+          annotations: state.annotations.map((a) =>
+            a.id === selectedId ? { ...a, fill: color } as Annotation : a
+          ),
+        }));
+        return;
+      }
+    }
+    set({ fillColor: color });
+  },
+  setStrokeWidth: (width) => {
+    const { selectedId, annotations } = get();
+    if (selectedId) {
+      const selected = annotations.find((a) => a.id === selectedId);
+      if (selected && 'strokeWidth' in selected) {
+        get().saveToHistory();
+        set((state) => ({
+          strokeWidth: width,
+          annotations: state.annotations.map((a) =>
+            a.id === selectedId ? { ...a, strokeWidth: width } as Annotation : a
+          ),
+        }));
+        return;
+      }
+    }
+    set({ strokeWidth: width });
+  },
+  setFontSize: (size) => {
+    const { selectedId, annotations } = get();
+    if (selectedId) {
+      const selected = annotations.find((a) => a.id === selectedId);
+      if (selected && selected.type === 'text') {
+        get().saveToHistory();
+        set((state) => ({
+          fontSize: size,
+          annotations: state.annotations.map((a) =>
+            a.id === selectedId ? { ...a, fontSize: size } as Annotation : a
+          ),
+        }));
+        return;
+      }
+    }
+    set({ fontSize: size });
+  },
+  setFontFamily: (family) => {
+    const { selectedId, annotations } = get();
+    if (selectedId) {
+      const selected = annotations.find((a) => a.id === selectedId);
+      if (selected && selected.type === 'text') {
+        get().saveToHistory();
+        set((state) => ({
+          fontFamily: family,
+          annotations: state.annotations.map((a) =>
+            a.id === selectedId ? { ...a, fontFamily: family } as Annotation : a
+          ),
+        }));
+        return;
+      }
+    }
+    set({ fontFamily: family });
+  },
 
   undo: () => {
     const historyStore = useHistoryStore.getState();

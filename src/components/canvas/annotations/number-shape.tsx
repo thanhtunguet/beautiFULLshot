@@ -17,8 +17,14 @@ export function NumberShape({ annotation }: Props) {
       x={annotation.x}
       y={annotation.y}
       draggable={annotation.draggable}
-      onClick={() => setSelected(annotation.id)}
-      onTap={() => setSelected(annotation.id)}
+      onClick={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
+      onTap={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
       onDragEnd={(e) => {
         updateAnnotation(annotation.id, {
           x: e.target.x(),
@@ -35,6 +41,7 @@ export function NumberShape({ annotation }: Props) {
         y={-annotation.fontSize / 2}
         width={annotation.radius * 2}
         align="center"
+        listening={false}
       />
     </Group>
   );

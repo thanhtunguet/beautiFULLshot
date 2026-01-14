@@ -2,7 +2,9 @@
 
 import { useCallback } from 'react';
 import { sendNotification } from '@tauri-apps/plugin-notification';
+import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
 import { useExportStore } from '../stores/export-store';
+import { toast } from '../stores/toast-store';
 import { useCanvasStore } from '../stores/canvas-store';
 import { useBackgroundStore } from '../stores/background-store';
 import { useSettingsStore } from '../stores/settings-store';
@@ -49,6 +51,17 @@ export function useExport() {
       }
     },
     [showNotifications]
+  );
+
+  /**
+   * Show in-app toast notification for saved files with "Show in Folder" action
+   */
+  const notifyFileSaved = useCallback(
+    (title: string, body: string, filePath: string) => {
+      // Show in-app toast with action button (replaces system notification)
+      toast.success(title, body, filePath);
+    },
+    []
   );
 
   /**
@@ -109,6 +122,7 @@ export function useExport() {
 
   /**
    * Copy image to clipboard with loading state
+   * Uses Tauri's clipboard plugin for native clipboard access
    */
   const copyToClipboard = useCallback(async () => {
     if (isExporting) return false;
@@ -122,19 +136,18 @@ export function useExport() {
     }
 
     try {
-      const blob = await fetch(dataURL).then((r) => r.blob());
-      const pngBlob = new Blob([blob], { type: 'image/png' });
+      // Convert data URL to base64 (remove data:image/png;base64, prefix)
+      const base64Data = dataURL.split(',')[1];
 
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': pngBlob }),
-      ]);
+      // Use Tauri's clipboard plugin to write image
+      await writeImage(base64Data);
 
       await notify('Copied!', 'Image copied to clipboard');
 
       return true;
     } catch (e) {
       logError('copyToClipboard', e);
-      await notify('Copy Failed', 'Could not copy to clipboard. Check browser permissions.');
+      await notify('Copy Failed', 'Could not copy to clipboard.');
       return false;
     } finally {
       finishExport();
@@ -183,7 +196,7 @@ export function useExport() {
       const savedPath = await saveFile(fullPath, bytes);
       setLastSavePath(savedPath);
 
-      await notify('Saved!', `Image saved to ${filename}`);
+      await notifyFileSaved('Saved!', `Image saved to ${filename}`, savedPath);
 
       return savedPath;
     } catch (e) {
@@ -193,7 +206,7 @@ export function useExport() {
     } finally {
       finishExport();
     }
-  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify, getSaveDir]);
+  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify, notifyFileSaved, getSaveDir]);
 
   /**
    * Save with dialog for location selection with loading state
@@ -222,7 +235,9 @@ export function useExport() {
       const savedPath = await saveFile(path, bytes);
       setLastSavePath(savedPath);
 
-      await notify('Saved!', 'Image saved successfully');
+      // Extract filename from path
+      const filename = savedPath.split('/').pop() || 'image';
+      await notifyFileSaved('Saved!', `Image saved to ${filename}`, savedPath);
 
       return savedPath;
     } catch (e) {
@@ -232,7 +247,7 @@ export function useExport() {
     } finally {
       finishExport();
     }
-  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify]);
+  }, [isExporting, exportToDataURL, format, setLastSavePath, startExport, finishExport, notify, notifyFileSaved]);
 
   return {
     exportToDataURL,

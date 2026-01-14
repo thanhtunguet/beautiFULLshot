@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorLayout } from "./components/layout/editor-layout";
+import { ToastContainer } from "./components/common/toast";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useHotkeys } from "./hooks/use-hotkeys";
 import { useSyncShortcuts } from "./hooks/use-sync-shortcuts";
 import { useSettingsStore } from "./stores/settings-store";
+import { useToastStore } from "./stores/toast-store";
 import type { ThemeMode } from "./stores/settings-store";
 
 /** Determine if dark mode should be active based on theme setting */
@@ -46,6 +48,7 @@ function ShortcutWarning({
 
 function App() {
   const { closeToTray, theme } = useSettingsStore();
+  const { toasts, removeToast } = useToastStore();
   const [warningDismissed, setWarningDismissed] = useState(false);
 
   // Initialize global keyboard shortcuts (in-app)
@@ -102,6 +105,7 @@ function App() {
         <ShortcutWarning message={errorMessage} onDismiss={dismissWarning} />
       )}
       <EditorLayout />
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </>
   );
 }

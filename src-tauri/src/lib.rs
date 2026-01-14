@@ -17,14 +17,13 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             // Create system tray
             tray::create_tray(app.handle())?;
 
-            // Create overlay window at startup (hidden)
-            if let Err(e) = overlay::init_overlay_window(app.handle()) {
-                eprintln!("Failed to create overlay window: {}", e);
-            }
+            // Note: Overlay window is created on-demand when needed
+            // to avoid fullscreen white screen at startup
 
             Ok(())
         })

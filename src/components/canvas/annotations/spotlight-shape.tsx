@@ -62,13 +62,19 @@ export function SpotlightShape({ annotation }: Props) {
         y={annotation.y}
         width={annotation.width}
         height={annotation.height}
-        fill="transparent"
+        fill="rgba(255,255,255,0.01)"
         stroke="white"
         strokeWidth={2}
         dash={[5, 5]}
         draggable={annotation.draggable}
-        onClick={() => setSelected(annotation.id)}
-        onTap={() => setSelected(annotation.id)}
+        onClick={(e) => {
+          e.cancelBubble = true;
+          setSelected(annotation.id);
+        }}
+        onTap={(e) => {
+          e.cancelBubble = true;
+          setSelected(annotation.id);
+        }}
         onDragEnd={(e) => {
           updateAnnotation(annotation.id, {
             x: e.target.x(),

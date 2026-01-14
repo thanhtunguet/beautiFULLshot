@@ -13,7 +13,7 @@ const PRESET_COLORS = [
   '#ffffff', // White
 ];
 
-const STROKE_WIDTHS = [1, 2, 3, 5, 8];
+const STROKE_WIDTHS = [3, 6, 9, 12, 15];
 
 export function ToolSettings() {
   const {
@@ -65,8 +65,9 @@ export function ToolSettings() {
                   strokeWidth === width ? 'bg-white' : 'bg-gray-700 dark:bg-gray-200'
                 }`}
                 style={{
-                  width: `${Math.min(4 + width * 2, 18)}px`,
-                  height: `${Math.min(4 + width * 2, 18)}px`,
+                  // Scale from 6px (for 3) to 18px (for 15) proportionally
+                  width: `${6 + (width / 15) * 12}px`,
+                  height: `${6 + (width / 15) * 12}px`,
                 }}
               />
             </button>

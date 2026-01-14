@@ -15,6 +15,7 @@ import { AnnotationLayer } from './annotation-layer';
 import { BackgroundLayer } from './background-layer';
 import { CropOverlay } from './crop-overlay';
 import { TextInputOverlay } from './text-input-overlay';
+import { TextEditOverlay } from './text-edit-overlay';
 import { ANNOTATION_DEFAULTS } from '../../constants/annotations';
 
 export function CanvasEditor() {
@@ -375,6 +376,8 @@ export function CanvasEditor() {
           onCancel={cancelTextInput}
         />
       )}
+      {/* Text edit overlay - for editing existing text annotations */}
+      <TextEditOverlay />
     </div>
   );
 }

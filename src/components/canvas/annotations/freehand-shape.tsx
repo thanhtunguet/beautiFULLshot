@@ -23,8 +23,15 @@ export function FreehandShape({ annotation }: Props) {
       lineCap="round"
       lineJoin="round"
       draggable={annotation.draggable}
-      onClick={() => setSelected(annotation.id)}
-      onTap={() => setSelected(annotation.id)}
+      hitStrokeWidth={Math.max(10, annotation.strokeWidth * 3)}
+      onClick={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
+      onTap={(e) => {
+        e.cancelBubble = true;
+        setSelected(annotation.id);
+      }}
       onDragEnd={(e) => {
         updateAnnotation(annotation.id, {
           x: e.target.x(),

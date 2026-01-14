@@ -19,6 +19,8 @@
     "opener:default",
     "global-shortcut:default",
     "notification:default",
-    "dialog:default"
+    "dialog:default",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-write-image"
   ]
 }
