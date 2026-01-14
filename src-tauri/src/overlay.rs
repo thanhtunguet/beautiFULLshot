@@ -70,9 +70,11 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
     // Capture screenshot BEFORE showing overlay
     let screenshot_base64 = capture_for_overlay()?;
 
-    // Store screenshot for overlay to retrieve
+    // Store screenshot for overlay to retrieve (recover from poisoned Mutex)
     {
-        let mut data = OVERLAY_SCREENSHOT.lock().map_err(|e| e.to_string())?;
+        let mut data = OVERLAY_SCREENSHOT
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *data = Some(screenshot_base64);
     }
 
@@ -81,7 +83,7 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
         Some(w) => w,
         None => {
             // Create overlay window on-demand (invisible until frontend shows it)
-            WebviewWindowBuilder::new(
+            match WebviewWindowBuilder::new(
                 &app,
                 "region-overlay",
                 WebviewUrl::App("overlay.html".into()),
@@ -96,7 +98,17 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
             .resizable(false)
             .visible(false) // Keep hidden until frontend loads screenshot
             .build()
-            .map_err(|e| e.to_string())?
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    // Clear screenshot data on window creation failure to prevent memory leak
+                    let mut data = OVERLAY_SCREENSHOT
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    *data = None;
+                    return Err(e.to_string());
+                }
+            }
         }
     };
 
@@ -120,17 +132,20 @@ pub async fn hide_overlay_window(app: AppHandle) -> Result<(), String> {
 
 /// Get the stored screenshot data for overlay background
 #[tauri::command]
-pub fn get_screenshot_data() -> Result<Option<String>, String> {
-    let data = OVERLAY_SCREENSHOT.lock().map_err(|e| e.to_string())?;
-    Ok(data.clone())
+pub fn get_screenshot_data() -> Option<String> {
+    let data = OVERLAY_SCREENSHOT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    data.clone()
 }
 
 /// Clear stored screenshot data
 #[tauri::command]
-pub fn clear_screenshot_data() -> Result<(), String> {
-    let mut data = OVERLAY_SCREENSHOT.lock().map_err(|e| e.to_string())?;
+pub fn clear_screenshot_data() {
+    let mut data = OVERLAY_SCREENSHOT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     *data = None;
-    Ok(())
 }
 
 // Compatibility aliases
