@@ -114,7 +114,7 @@ pub async fn show_overlay_window(app: AppHandle) -> Result<(), String> {
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     *data = None;
-                    return Err(e.to_string());
+                    return Err(format!("{}", e));
                 }
             }
         }

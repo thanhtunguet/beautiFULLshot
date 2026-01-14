@@ -25,7 +25,7 @@ export function RegionOverlay() {
   // Hide overlay and reset state
   // IMPORTANT: Hide window BEFORE emitting event to prevent capturing overlay UI
   // NOTE: Don't clear screenshot data here - main window needs it to crop the region
-  const hideOverlay = useCallback(async (emitSelection: boolean, region?: {x: number, y: number, width: number, height: number}) => {
+  const hideOverlay = useCallback(async (emitSelection: boolean, region?: { x: number, y: number, width: number, height: number }) => {
     if (isClosing) return;
     setIsClosing(true);
 
@@ -147,6 +147,13 @@ export function RegionOverlay() {
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [hideOverlay, isActive]);
+
+  // Auto-activate on mount (handles window creation race condition)
+  // When overlay is created on-demand, this ensures it activates even if
+  // the overlay-activate event is emitted before the listener is set up
+  useEffect(() => {
+    activateOverlay();
+  }, [activateOverlay]);
 
   // Focus container when active
   useEffect(() => {
