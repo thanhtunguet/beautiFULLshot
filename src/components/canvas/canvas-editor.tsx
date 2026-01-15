@@ -273,51 +273,22 @@ export function CanvasEditor() {
           <Group x={contentOffsetX} y={contentOffsetY}>
             {image && (
               <Group>
-                {/* Shadow layer - shadow starts from outside border */}
+                {/* Drop shadow layer - strong color, compact size */}
                 {shadowBlur > 0 && (
-                  <Group
-                    clipFunc={(ctx) => {
-                      const outerSize = Math.max(originalWidth, originalHeight) + padding * 2 + shadowBlur * 2;
-                      const bw = borderWidth;
-                      const cr = cornerRadius + bw;
-                      const x = padding - bw;
-                      const y = padding - bw;
-                      const w = originalWidth + bw * 2;
-                      const h = originalHeight + bw * 2;
-
-                      // Draw outer rect (large area) - winding order matters for clip
-                      ctx.moveTo(-outerSize, -outerSize);
-                      ctx.lineTo(outerSize * 2, -outerSize);
-                      ctx.lineTo(outerSize * 2, outerSize * 2);
-                      ctx.lineTo(-outerSize, outerSize * 2);
-                      ctx.closePath();
-
-                      // Cut out inner area (image + border) with rounded corners - opposite winding
-                      ctx.moveTo(x + cr, y);
-                      ctx.arcTo(x, y, x, y + cr, cr);
-                      ctx.lineTo(x, y + h - cr);
-                      ctx.arcTo(x, y + h, x + cr, y + h, cr);
-                      ctx.lineTo(x + w - cr, y + h);
-                      ctx.arcTo(x + w, y + h, x + w, y + h - cr, cr);
-                      ctx.lineTo(x + w, y + cr);
-                      ctx.arcTo(x + w, y, x + w - cr, y, cr);
-                      ctx.closePath();
-                    }}
-                  >
-                    <Rect
-                      x={padding - borderWidth}
-                      y={padding - borderWidth}
-                      width={originalWidth + borderWidth * 2}
-                      height={originalHeight + borderWidth * 2}
-                      fill="#000"
-                      cornerRadius={cornerRadius + borderWidth}
-                      shadowColor="rgba(0, 0, 0, 0.6)"
-                      shadowBlur={shadowBlur * 0.6}
-                      shadowOffset={{ x: shadowBlur * -0.3, y: shadowBlur * 0.8 }}
-                      shadowOpacity={0.8}
-                      listening={false}
-                    />
-                  </Group>
+                  <Rect
+                    x={padding}
+                    y={padding}
+                    width={originalWidth}
+                    height={originalHeight}
+                    fill="#000"
+                    cornerRadius={cornerRadius}
+                    shadowColor="rgba(0, 0, 0, 1)"
+                    shadowBlur={shadowBlur * 0.6}
+                    shadowOffset={{ x: shadowBlur * 0.15, y: shadowBlur * 0.25 }}
+                    shadowOpacity={1}
+                    shadowEnabled={true}
+                    listening={false}
+                  />
                 )}
                 {/* Image */}
                 <KonvaImage
