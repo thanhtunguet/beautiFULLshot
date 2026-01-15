@@ -19,13 +19,13 @@ export function Sidebar() {
 
   return (
     <div className="w-80 glass floating-panel flex flex-col h-full">
-      {/* Tab navigation */}
-      <div className="flex shrink-0 p-1.5 gap-1">
+      {/* Tab navigation - compact */}
+      <div className="flex shrink-0 p-1 gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-2.5 px-4 text-sm font-medium transition-all rounded-xl ${
+            className={`flex-1 py-1.5 px-3 text-sm font-medium transition-all rounded-lg ${
               activeTab === tab.id
                 ? 'glass-btn glass-btn-active text-orange-500'
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white/30 dark:hover:bg-white/5'
@@ -37,12 +37,7 @@ export function Sidebar() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-1.5 pb-1.5">
-        {!imageUrl && (
-          <div className="p-4 text-center text-gray-400 dark:text-gray-500 text-sm glass-flat rounded-xl mb-2">
-            Take a screenshot to get started
-          </div>
-        )}
+      <div className="flex-1 overflow-y-auto px-1 pb-1">
 
         {activeTab === 'edit' && (
           <>

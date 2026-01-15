@@ -121,30 +121,33 @@ export function CropPanel() {
   };
 
   return (
-    <div className="p-3 glass-flat rounded-xl mb-2">
-      <h3 className="font-medium mb-3 text-gray-800 dark:text-gray-200">Crop</h3>
+    <div className="p-2 glass-flat rounded-xl mb-1.5">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200">Crop</h3>
+        {!isCropping && (
+          <button
+            onClick={handleStartCrop}
+            disabled={!canCrop}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+              canCrop
+                ? 'glass-btn text-orange-500 hover:text-orange-600'
+                : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            {canCrop ? 'Start' : 'No image'}
+          </button>
+        )}
+      </div>
 
-      {!isCropping ? (
-        <button
-          onClick={handleStartCrop}
-          disabled={!canCrop}
-          className={`w-full py-2 rounded-xl font-medium transition-all ${
-            canCrop
-              ? 'glass-btn text-orange-500 hover:text-orange-600'
-              : 'glass-flat text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50'
-          }`}
-        >
-          {canCrop ? 'Start Crop' : 'Take screenshot first'}
-        </button>
-      ) : (
+      {isCropping && (
         <>
           {/* Aspect ratio presets */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-1 mb-2">
             {ASPECT_RATIOS.map((ar) => (
               <button
                 key={ar.id}
                 onClick={() => handleAspectRatioChange(ar.ratio)}
-                className={`px-2 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                className={`px-1.5 py-1 text-xs font-medium rounded-lg transition-all ${
                   aspectRatio === ar.ratio
                     ? 'glass-btn glass-btn-active text-orange-500'
                     : 'glass-btn text-gray-600 dark:text-gray-300'
@@ -156,16 +159,16 @@ export function CropPanel() {
           </div>
 
           {/* Apply/Cancel buttons */}
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             <button
               onClick={handleApplyCrop}
-              className="flex-1 py-2 glass-btn glass-btn-active text-orange-500 rounded-xl font-medium transition-all"
+              className="flex-1 py-1.5 glass-btn glass-btn-active text-orange-500 rounded-lg text-xs font-medium transition-all"
             >
               Apply
             </button>
             <button
               onClick={cancelCrop}
-              className="flex-1 py-2 glass-btn text-gray-600 dark:text-gray-300 rounded-xl transition-all"
+              className="flex-1 py-1.5 glass-btn text-gray-600 dark:text-gray-300 rounded-lg text-xs transition-all"
             >
               Cancel
             </button>
@@ -174,16 +177,19 @@ export function CropPanel() {
       )}
 
       {/* Output aspect ratio selection */}
-      <div className="mt-4 pt-3 border-t border-white/10 dark:border-white/5">
-        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-2">
-          Output Ratio
-        </label>
+      <div className="mt-2 pt-2 border-t border-white/10 dark:border-white/5">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs text-gray-500 dark:text-gray-400">Output Ratio</label>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {OUTPUT_ASPECT_RATIOS.find((r) => r.id === outputAspectRatio)?.name || 'Auto'}
+          </span>
+        </div>
         <div className="grid grid-cols-4 gap-1">
           {OUTPUT_ASPECT_RATIOS.map((ratio) => (
             <button
               key={ratio.id}
               onClick={() => handleOutputRatioChange(ratio.id)}
-              className={`py-1.5 px-1 rounded-lg text-xs font-medium transition-all ${
+              className={`py-1 px-1 rounded text-xs font-medium transition-all ${
                 outputAspectRatio === ratio.id
                   ? 'glass-btn glass-btn-active text-orange-500'
                   : 'glass-btn text-gray-600 dark:text-gray-300'
@@ -194,9 +200,6 @@ export function CropPanel() {
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
-          {OUTPUT_ASPECT_RATIOS.find((r) => r.id === outputAspectRatio)?.name || 'Auto'}
-        </span>
       </div>
     </div>
   );
