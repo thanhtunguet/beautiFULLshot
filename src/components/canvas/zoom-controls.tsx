@@ -72,14 +72,24 @@ export function ZoomControls() {
         onClick={copyToClipboard}
         disabled={isExporting}
         aria-label="Copy to clipboard"
-        title="Copy to Clipboard"
-        className={`w-8 h-8 flex items-center justify-center rounded-lg text-orange-500 transition-all ${
+        title="Copy to Clipboard (⌘C / Ctrl+C)"
+        className={`px-3 h-8 flex items-center justify-center gap-1.5 rounded-lg text-orange-500 text-sm font-medium transition-all ${
           isExporting
             ? 'opacity-50 cursor-not-allowed'
             : 'glass-btn hover:text-orange-600'
         }`}
       >
-        {isCopying ? <CopySpinner /> : <CopyIcon />}
+        {isCopying ? (
+          <>
+            <CopySpinner />
+            Copying...
+          </>
+        ) : (
+          <>
+            <CopyIcon />
+            Copy
+          </>
+        )}
       </button>
 
       {/* Separator */}

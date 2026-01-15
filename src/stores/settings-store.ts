@@ -85,7 +85,7 @@ const DEFAULT_HOTKEYS: HotkeyConfig = {
   captureRegion: 'CommandOrControl+Option+2',
   captureWindow: 'CommandOrControl+Option+3',
   save: 'CommandOrControl+S',
-  copy: 'CommandOrControl+Shift+V',
+  copy: 'CommandOrControl+C',
 };
 
 const DEFAULT_STATE = {

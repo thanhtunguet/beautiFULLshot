@@ -144,6 +144,10 @@ export function useExport() {
       // Use custom Rust command with arboard crate for reliable clipboard
       await invoke('copy_image_to_clipboard', { base64Data });
 
+      // Show in-app toast notification
+      toast.success('Copied!', 'Image copied to clipboard');
+
+      // Also send system notification if enabled
       await notify('Copied!', 'Image copied to clipboard');
 
       return true;

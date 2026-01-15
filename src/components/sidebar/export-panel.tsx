@@ -1,9 +1,7 @@
 // ExportPanel - UI for export settings and actions
 
 import { useExportStore } from '../../stores/export-store';
-import { useCanvasStore } from '../../stores/canvas-store';
 import { useExport } from '../../hooks/use-export';
-import { OUTPUT_ASPECT_RATIOS } from '../../data/aspect-ratios';
 
 /** Loading spinner component */
 function Spinner() {
@@ -36,24 +34,13 @@ export function ExportPanel() {
     format,
     quality,
     pixelRatio,
-    outputAspectRatio,
     setFormat,
     setQuality,
     setPixelRatio,
-    setOutputAspectRatio,
   } = useExportStore();
-
-  const fitToView = useCanvasStore((state) => state.fitToView);
 
   const { copyToClipboard, quickSave, saveAs, isExporting, exportOperation } =
     useExport();
-
-  // Handle aspect ratio change with auto-fit
-  const handleAspectRatioChange = (ratioId: string) => {
-    setOutputAspectRatio(ratioId);
-    // Auto-fit view after aspect ratio changes
-    setTimeout(() => fitToView(), 0);
-  };
 
   return (
     <div className="p-3 glass-flat rounded-xl mb-2">
@@ -129,33 +116,6 @@ export function ExportPanel() {
         </div>
         <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
           Higher = sharper on Retina displays
-        </span>
-      </div>
-
-      {/* Output aspect ratio selection */}
-      <div className="mb-4">
-        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-          Output Ratio
-        </label>
-        <div className="grid grid-cols-4 gap-1">
-          {OUTPUT_ASPECT_RATIOS.map((ratio) => (
-            <button
-              key={ratio.id}
-              onClick={() => handleAspectRatioChange(ratio.id)}
-              disabled={isExporting}
-              className={`py-1.5 px-1 rounded-lg text-xs font-medium transition-all ${
-                outputAspectRatio === ratio.id
-                  ? 'glass-btn glass-btn-active text-orange-500'
-                  : 'glass-btn text-gray-600 dark:text-gray-300'
-              } ${isExporting ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={ratio.name}
-            >
-              {ratio.id === 'auto' ? 'Auto' : ratio.id}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
-          {OUTPUT_ASPECT_RATIOS.find((r) => r.id === outputAspectRatio)?.name || 'Auto'}
         </span>
       </div>
 

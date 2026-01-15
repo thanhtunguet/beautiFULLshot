@@ -1,8 +1,9 @@
 // CropPanel - UI for crop mode with aspect ratio selection
 
-import { ASPECT_RATIOS } from '../../data/aspect-ratios';
+import { ASPECT_RATIOS, OUTPUT_ASPECT_RATIOS } from '../../data/aspect-ratios';
 import { useCropStore } from '../../stores/crop-store';
 import { useCanvasStore } from '../../stores/canvas-store';
+import { useExportStore } from '../../stores/export-store';
 
 export function CropPanel() {
   // Use selectors for proper Zustand 5.0 subscription
@@ -18,6 +19,9 @@ export function CropPanel() {
   const originalWidth = useCanvasStore((state) => state.originalWidth);
   const originalHeight = useCanvasStore((state) => state.originalHeight);
   const cropImage = useCanvasStore((state) => state.cropImage);
+  const fitToView = useCanvasStore((state) => state.fitToView);
+  const outputAspectRatio = useExportStore((state) => state.outputAspectRatio);
+  const setOutputAspectRatio = useExportStore((state) => state.setOutputAspectRatio);
 
   // Disable crop if no image loaded
   const canCrop = imageUrl !== null && originalWidth > 0;
@@ -110,6 +114,12 @@ export function CropPanel() {
     applyCrop();
   };
 
+  // Handle output aspect ratio change with auto-fit
+  const handleOutputRatioChange = (ratioId: string) => {
+    setOutputAspectRatio(ratioId);
+    setTimeout(() => fitToView(), 0);
+  };
+
   return (
     <div className="p-3 glass-flat rounded-xl mb-2">
       <h3 className="font-medium mb-3 text-gray-800 dark:text-gray-200">Crop</h3>
@@ -162,6 +172,32 @@ export function CropPanel() {
           </div>
         </>
       )}
+
+      {/* Output aspect ratio selection */}
+      <div className="mt-4 pt-3 border-t border-white/10 dark:border-white/5">
+        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-2">
+          Output Ratio
+        </label>
+        <div className="grid grid-cols-4 gap-1">
+          {OUTPUT_ASPECT_RATIOS.map((ratio) => (
+            <button
+              key={ratio.id}
+              onClick={() => handleOutputRatioChange(ratio.id)}
+              className={`py-1.5 px-1 rounded-lg text-xs font-medium transition-all ${
+                outputAspectRatio === ratio.id
+                  ? 'glass-btn glass-btn-active text-orange-500'
+                  : 'glass-btn text-gray-600 dark:text-gray-300'
+              }`}
+              title={ratio.name}
+            >
+              {ratio.id === 'auto' ? 'Auto' : ratio.id}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
+          {OUTPUT_ASPECT_RATIOS.find((r) => r.id === outputAspectRatio)?.name || 'Auto'}
+        </span>
+      </div>
     </div>
   );
 }
