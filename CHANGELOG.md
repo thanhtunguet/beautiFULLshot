@@ -8,6 +8,7 @@ Tất cả các thay đổi đáng chú ý của BeautyFullShot sẽ được gh
 ## [1.0.3] - 2026-01-16
 
 ### Added / Tính năng mới
+- **Multi-Monitor Support / Hỗ trợ nhiều màn hình**: Monitor picker modal for region capture, auto-detect cursor monitor for fullscreen capture / Hộp thoại chọn màn hình cho chụp vùng, tự động phát hiện màn hình con trỏ cho chụp toàn màn hình
 - **Text Formatting / Định dạng chữ**: Font family dropdown (10 fonts displayed in their typeface), size slider, bold/italic/underline/strikethrough buttons / Dropdown font (10 font hiển thị đúng kiểu chữ), thanh trượt cỡ chữ, nút B/I/U/S
 - **Text Effects / Hiệu ứng chữ**: Normal and stroke (white outline) text effects / Hiệu ứng chữ thường và có viền trắng
 - **Multiline Text / Chữ nhiều dòng**: Press Shift+Enter for new lines in text annotations / Nhấn Shift+Enter để xuống dòng

@@ -11,7 +11,7 @@ interface Props {
 
 const APP_INFO = {
   name: 'beautiFULLshot',
-  version: '1.0.2',
+  version: '1.0.3',
   description: 'Capture, annotate, and beautify screenshots',
   copyright: '© 2025 itsddvn',
   website: 'https://beautifullshot.itsdd.vn',
