@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { EditorLayout } from "./components/layout/editor-layout";
 import { ToastContainer } from "./components/common/toast";
 import { PermissionRequired } from "./components/permission-required";
+import { UpdateModal } from "./components/update-modal";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useHotkeys } from "./hooks/use-hotkeys";
 import { useSyncShortcuts } from "./hooks/use-sync-shortcuts";
@@ -127,6 +128,7 @@ function App() {
     <>
       <EditorLayout />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
+      <UpdateModal />
     </>
   );
 }
