@@ -1,8 +1,12 @@
 // BeautyFullShot - Screenshot Beautification App
 // Tauri commands: https://tauri.app/develop/calling-rust/
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Manager, RunEvent, WindowEvent};
+use std::sync::atomic::AtomicBool;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::Ordering;
+use tauri::WindowEvent;
+#[cfg(target_os = "macos")]
+use tauri::{Manager, RunEvent};
 
 #[cfg(target_os = "macos")]
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
@@ -144,7 +148,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
+        .run(|_app, event| {
             match &event {
                 // Handle Cmd+Q (macOS) - hide to tray instead of quit
                 // Unless SHOULD_QUIT flag is set (from tray menu quit)
@@ -160,21 +164,21 @@ pub fn run() {
                     api.prevent_exit();
 
                     // Hide main window to tray
-                    if let Some(window) = app.get_webview_window("main") {
+                    if let Some(window) = _app.get_webview_window("main") {
                         let _ = window.hide();
                     }
 
                     // Hide from dock
-                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    let _ = _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                 }
 
                 // Handle macOS dock click to reopen window
                 #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => {
                     // Restore dock icon
-                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+                    let _ = _app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
-                    if let Some(window) = app.get_webview_window("main") {
+                    if let Some(window) = _app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.unminimize();
                         let _ = window.set_focus();
