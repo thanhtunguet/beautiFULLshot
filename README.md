@@ -2,6 +2,9 @@
 
 Cross-platform screenshot beautification app built with Tauri v2 + React + TypeScript.
 
+**Website**: [beautifullshot.itsdd.vn](https://beautifullshot.itsdd.vn)
+**Author**: [@itsddvn](https://github.com/itsddvn) | [YouTube](https://youtube.com/@itsddvn) | [Facebook](https://facebook.com/itsddvn)
+
 ## Features
 
 - **Screenshot Capture**: Fullscreen, region, and window capture with global hotkeys
@@ -83,8 +86,8 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libpipewire-0.3-dev l
 
 ```bash
 # Clone repository
-git clone https://github.com/itsddvn/beautyscreenshot.git
-cd beautyscreenshot
+git clone https://github.com/itsddvn/beautiFULLshot.git
+cd beautiFULLshot
 
 # Install dependencies
 npm install

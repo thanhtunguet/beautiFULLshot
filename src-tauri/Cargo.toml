@@ -2,7 +2,9 @@
 name = "beautyfullshot"
 version = "1.0.2"
 description = "Cross-platform screenshot beautification app"
-authors = ["dcppsw"]
+authors = ["itsddvn"]
+homepage = "https://beautifullshot.itsdd.vn"
+repository = "https://github.com/itsddvn/beautiFULLshot"
 edition = "2021"
 
 [lib]

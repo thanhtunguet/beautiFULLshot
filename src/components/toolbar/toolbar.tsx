@@ -11,6 +11,7 @@ import { ToolButtons } from './tool-buttons';
 import { ToolSettings } from './tool-settings';
 import { UndoRedoButtons } from './undo-redo-buttons';
 import { SettingsModal } from '../settings/settings-modal';
+import { AboutModal } from '../about-modal';
 import { logError } from '../../utils/logger';
 
 // Helper: Get image dimensions from bytes
@@ -41,6 +42,7 @@ export function Toolbar() {
   const { clearCrop } = useCropStore();
   const { openWindowPicker } = useUIStore();
   const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const handleCaptureFullscreen = useCallback(async () => {
     const bytes = await captureFullscreen();
@@ -155,6 +157,18 @@ export function Toolbar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* About button */}
+      <button
+        onClick={() => setShowAbout(true)}
+        aria-label="About beautiFULLshot"
+        className="w-9 h-9 flex items-center justify-center glass-btn rounded-xl text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+        title="About"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </button>
+
       {/* Settings button */}
       <button
         onClick={() => setShowSettings(true)}
@@ -183,7 +197,8 @@ export function Toolbar() {
         </svg>
       </button>
 
-      {/* Settings Modal */}
+      {/* Modals */}
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );

@@ -9,7 +9,7 @@ use tauri::WindowEvent;
 use tauri::{Manager, RunEvent};
 
 #[cfg(target_os = "macos")]
-use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 /// Global flag to track if app should actually quit (from tray menu)
 /// vs just hide to tray (from Cmd+Q or window close)
@@ -47,9 +47,21 @@ pub fn run() {
                     .accelerator("CmdOrCtrl+Q")
                     .build(handle)?;
 
+                // About metadata with author and links
+                // Note: icon is loaded from bundle automatically on macOS
+                let about_metadata = AboutMetadata {
+                    name: Some("beautiFULLshot".into()),
+                    version: Some(env!("CARGO_PKG_VERSION").into()),
+                    copyright: Some("© 2025 itsddvn".into()),
+                    authors: Some(vec!["itsddvn".into()]),
+                    website: Some("https://beautifullshot.itsdd.vn".into()),
+                    website_label: Some("beautifullshot.itsdd.vn".into()),
+                    ..Default::default()
+                };
+
                 // Create app submenu (first menu on macOS)
                 let app_submenu = SubmenuBuilder::new(handle, "beautiFULLshot")
-                    .item(&PredefinedMenuItem::about(handle, Some("About beautiFULLshot"), None)?)
+                    .item(&PredefinedMenuItem::about(handle, Some("About beautiFULLshot"), Some(about_metadata))?)
                     .separator()
                     .item(&hide_item)
                     .separator()
