@@ -43,7 +43,6 @@ function cropBase64Image(
 
     img.onload = () => {
       try {
-        // Create canvas with region dimensions
         const canvas = document.createElement('canvas');
         canvas.width = region.width;
         canvas.height = region.height;
@@ -54,14 +53,12 @@ function cropBase64Image(
           return;
         }
 
-        // Draw cropped region onto canvas
         ctx.drawImage(
           img,
-          region.x, region.y, region.width, region.height,  // Source region
-          0, 0, region.width, region.height                  // Destination (full canvas)
+          region.x, region.y, region.width, region.height,
+          0, 0, region.width, region.height
         );
 
-        // Convert canvas to PNG bytes
         canvas.toBlob((blob) => {
           if (blob) {
             blob.arrayBuffer().then((buffer) => {
@@ -80,10 +77,10 @@ function cropBase64Image(
       reject(new Error('Failed to load image for cropping'));
     };
 
-    // Load image from base64
     img.src = `data:image/png;base64,${base64Data}`;
   });
 }
+
 
 /**
  * Hook that listens for global hotkeys and tray capture events
@@ -151,25 +148,24 @@ export function useHotkeys(): void {
   }, [openWindowPicker]);
 
   // Handle region selected from overlay
-  // Uses stored screenshot data and crops to selection (instead of taking new screenshot)
+  // Crops the stored screenshot to the selected region
   const handleRegionSelected = useCallback(async (region: CaptureRegion) => {
     try {
-      // Get stored screenshot data (the same image shown in overlay)
+      // Get stored screenshot data
       const screenshotBase64 = await screenshotApi.getScreenshotData();
 
       if (screenshotBase64) {
-        // Crop the stored screenshot to the selected region using Canvas
+        // Crop screenshot to selected region
         const croppedBytes = await cropBase64Image(screenshotBase64, region);
         if (croppedBytes) {
           const { width, height } = await getImageDimensions(croppedBytes);
           clearCrop();
           setImageFromBytes(croppedBytes, width, height);
-          // Auto-fit to view after capture
           setTimeout(() => fitToView(), 50);
         }
       }
 
-      // Clear stored screenshot data after extraction
+      // Clear stored screenshot data
       await screenshotApi.clearScreenshotData();
     } catch (e) {
       logError('useHotkeys:regionSelected', e);

@@ -72,8 +72,7 @@ export function useScreenshot(): UseScreenshotReturn {
       setLoading(true);
       setError(null);
       try {
-        // Use hidden capture to exclude app window from screenshot
-        const bytes = await api.captureRegionHidden(region);
+        const bytes = await api.captureRegion(region.x, region.y, region.width, region.height);
         return bytes;
       } catch (e) {
         setError(String(e));

@@ -1,5 +1,5 @@
 // Region overlay component - Fullscreen overlay for interactive region selection
-// Persistent window that shows/hides, displays captured screenshot as background
+// Shows captured screenshot as background for accurate region selection
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
@@ -22,19 +22,17 @@ export function RegionOverlay() {
   const [isActive, setIsActive] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Hide overlay and reset state
-  // IMPORTANT: Hide window BEFORE emitting event to prevent capturing overlay UI
-  // NOTE: Don't clear screenshot data here - main window needs it to crop the region
+  // Hide overlay and emit selection result
   const hideOverlay = useCallback(async (emitSelection: boolean, region?: { x: number, y: number, width: number, height: number }) => {
     if (isClosing) return;
     setIsClosing(true);
 
-    // Reset visual state immediately to prevent UI from being captured
+    // Reset visual state immediately
     setIsActive(false);
     setIsSelecting(false);
     setSelection(null);
 
-    // Hide window FIRST (before capture triggers)
+    // Hide window FIRST
     try {
       const win = getCurrentWindow();
       await win.hide();
@@ -42,19 +40,15 @@ export function RegionOverlay() {
       console.error('Hide window error:', e);
     }
 
-    // Wait for window compositor to fully hide the overlay
-    // macOS: 50-100ms, Windows: 100-200ms, Linux: 50-150ms
-    await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait for compositor
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Emit event to main window (after overlay is fully hidden)
-    // NOTE: Screenshot data is NOT cleared here - main window will use it to crop region
-    // and then clear it after extracting
+    // Emit event to main window
     try {
       const mainWindow = new Window('main');
       if (emitSelection && region) {
         await mainWindow.emit('region-selected', region);
       } else {
-        // Clear screenshot data only on cancel (not needed)
         await invoke('clear_screenshot_data');
         await mainWindow.emit('region-selection-cancelled', {});
       }
@@ -62,14 +56,12 @@ export function RegionOverlay() {
       console.error('Emit error:', e);
     }
 
-    // Final cleanup
     setBackgroundImage(null);
     setIsClosing(false);
   }, [isClosing]);
 
   // Activate overlay - load screenshot and show
   const activateOverlay = useCallback(async () => {
-    // Reset state
     setIsSelecting(false);
     setSelection(null);
     setIsClosing(false);
@@ -82,7 +74,7 @@ export function RegionOverlay() {
       // Load screenshot as background
       const screenshotData = await invoke<string | null>('get_screenshot_data');
       if (screenshotData) {
-        // Preload image
+        // Preload image before showing window
         const img = new Image();
         img.onload = async () => {
           setBackgroundImage(`data:image/png;base64,${screenshotData}`);
@@ -113,7 +105,7 @@ export function RegionOverlay() {
     }
   }, []);
 
-  // Listen for activation event from Rust
+  // Listen for activation event
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 
@@ -128,7 +120,7 @@ export function RegionOverlay() {
     };
   }, [activateOverlay]);
 
-  // Handle ESC key to cancel selection
+  // Handle ESC key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isActive) return;
@@ -148,9 +140,7 @@ export function RegionOverlay() {
     };
   }, [hideOverlay, isActive]);
 
-  // Auto-activate on mount (handles window creation race condition)
-  // When overlay is created on-demand, this ensures it activates even if
-  // the overlay-activate event is emitted before the listener is set up
+  // Auto-activate on mount
   useEffect(() => {
     activateOverlay();
   }, [activateOverlay]);
@@ -202,7 +192,7 @@ export function RegionOverlay() {
       return;
     }
 
-    // Convert to physical pixels for capture
+    // Convert to physical pixels
     const region = {
       x: Math.round(x * scaleFactor),
       y: Math.round(y * scaleFactor),
@@ -213,7 +203,7 @@ export function RegionOverlay() {
     hideOverlay(true, region);
   }, [isSelecting, selection, scaleFactor, hideOverlay, isClosing]);
 
-  // Calculate selection box style
+  // Selection box style with cutout effect
   const getSelectionStyle = (): React.CSSProperties => {
     if (!selection) return { display: 'none' };
 
@@ -236,7 +226,6 @@ export function RegionOverlay() {
     };
   };
 
-  // Don't render interactive content until active
   if (!isActive) {
     return null;
   }
@@ -259,28 +248,41 @@ export function RegionOverlay() {
         backgroundColor: '#000',
       }}
     >
-      {/* Background image - fill entire viewport exactly (no scaling) */}
+      {/* Background screenshot with dim overlay */}
       {backgroundImage && (
-        <img
-          src={backgroundImage}
-          alt=""
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            objectFit: 'fill',
-            pointerEvents: 'none',
-          }}
-          draggable={false}
-        />
+        <>
+          <img
+            src={backgroundImage}
+            alt=""
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              objectFit: 'fill',
+              pointerEvents: 'none',
+            }}
+            draggable={false}
+          />
+          {/* Dim overlay - darkens the screen before selection */}
+          {!isSelecting && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </>
       )}
 
-      {/* Selection rectangle with cutout effect */}
+      {/* Selection rectangle */}
       <div style={getSelectionStyle()} />
 
-      {/* Instructions overlay */}
+      {/* Instructions */}
       {!isSelecting && (
         <div
           style={{
@@ -303,7 +305,7 @@ export function RegionOverlay() {
         </div>
       )}
 
-      {/* Selection dimensions tooltip */}
+      {/* Selection dimensions */}
       {isSelecting && selection && (
         <div
           style={{

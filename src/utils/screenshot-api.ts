@@ -3,7 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { MonitorInfo, WindowInfo, CaptureRegion } from "../types/screenshot";
+import type { MonitorInfo, WindowInfo } from "../types/screenshot";
 
 // Delay for window hide - allows OS to process hide before capture
 const MACOS_HIDE_DELAY_MS = 10;
@@ -37,16 +37,14 @@ export async function captureFullscreen(): Promise<Uint8Array> {
 
 /**
  * Capture a specific region from the primary monitor
- * @param region - The region coordinates and dimensions
+ * @param x - X coordinate of region
+ * @param y - Y coordinate of region
+ * @param width - Width of region
+ * @param height - Height of region
  * @returns PNG image bytes as Uint8Array
  */
-export async function captureRegion(region: CaptureRegion): Promise<Uint8Array> {
-  const base64 = await invoke<string>("capture_region", {
-    x: region.x,
-    y: region.y,
-    width: region.width,
-    height: region.height,
-  });
+export async function captureRegion(x: number, y: number, width: number, height: number): Promise<Uint8Array> {
+  const base64 = await invoke<string>("capture_region", { x, y, width, height });
   return base64ToBytes(base64);
 }
 
@@ -156,16 +154,6 @@ export async function captureWithHiddenWindow<T>(
 export async function captureFullscreenHidden(): Promise<Uint8Array> {
   return captureWithHiddenWindow(captureFullscreen);
 }
-
-/**
- * Capture region with window hidden
- * @param region - The region coordinates and dimensions
- * @returns PNG image bytes as Uint8Array
- */
-export async function captureRegionHidden(region: CaptureRegion): Promise<Uint8Array> {
-  return captureWithHiddenWindow(() => captureRegion(region));
-}
-
 
 /**
  * Update global keyboard shortcuts in the backend
