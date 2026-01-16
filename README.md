@@ -15,6 +15,7 @@ Cross-platform screenshot beautification app built with Tauri v2 + React + TypeS
 - **Export Options**: PNG/JPEG with quality control, 1x/2x/3x resolution, clipboard copy (Cmd/Ctrl+C)
 - **Image Input**: Drag & drop images, paste from clipboard, or capture screenshots
 - **Native Integration**: System tray, global hotkeys, notifications
+- **Auto-Update**: Checks for updates on startup and installs automatically
 - **Cross-Platform**: Windows, macOS, Linux (X11)
 
 ## Installation

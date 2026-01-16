@@ -5,6 +5,24 @@ Tất cả các thay đổi đáng chú ý của BeautyFullShot sẽ được gh
 
 ---
 
+## [1.0.2] - 2026-01-16
+
+### Added / Tính năng mới
+- **Auto-Update / Tự động cập nhật**: App checks for updates on startup and can update automatically / Ứng dụng kiểm tra cập nhật khi khởi động và tự động cập nhật
+- **About Dialog / Hộp thoại Giới thiệu**: New About modal with app info, version, and social links / Hộp thoại Giới thiệu với thông tin app, phiên bản và liên kết mạng xã hội
+- **App Icon / Biểu tượng ứng dụng**: Added app icon asset for About dialog / Thêm biểu tượng cho hộp thoại Giới thiệu
+
+### Fixed / Sửa lỗi
+- **Linux AppImage / Linux AppImage**: Fixed AppImage bundling on Ubuntu 24.04 (NO_STRIP for RELR compatibility) / Sửa lỗi đóng gói AppImage trên Ubuntu 24.04
+- **Ghost Window / Cửa sổ ma**: Fixed transparent window rendering issue / Sửa lỗi hiển thị cửa sổ trong suốt
+
+### Technical / Kỹ thuật
+- Integrated tauri-plugin-updater for secure auto-updates / Tích hợp tauri-plugin-updater để tự động cập nhật an toàn
+- Added updater signing public key / Thêm khóa công khai ký cập nhật
+- CI/CD: Ubuntu 24.04, libfuse2, APPIMAGE_EXTRACT_AND_RUN, NO_STRIP / Cải thiện CI/CD cho Linux
+
+---
+
 ## [1.0.1] - 2026-01-16
 
 ### Added / Tính năng mới
