@@ -102,51 +102,34 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
-      - name: Upload signature to release (macOS)
-        if: matrix.platform == 'macos-latest'
+      - name: Collect updater artifacts
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ github.ref_name }}"
-          SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            echo "Uploading signature: $SIG_FILE"
-            gh release upload "$VERSION" "$SIG_FILE" --clobber || echo "Upload failed but continuing"
-          else
-            echo "No signature file found"
-          fi
+          mkdir -p updater-artifacts
+          echo "=== Searching for updater artifacts ==="
+          find src-tauri/target -name "*.sig" -type f 2>/dev/null || true
+          find src-tauri/target -name "*.app.tar.gz" -type f 2>/dev/null || true
+          find src-tauri/target -name "*.AppImage.tar.gz" -type f 2>/dev/null || true
+          find src-tauri/target -name "*.nsis.zip" -type f 2>/dev/null || true
 
-      - name: Upload signature to release (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ github.ref_name }}"
-          SIG_FILE=$(find src-tauri/target -name "*.nsis.zip.sig" -type f 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            echo "Uploading signature: $SIG_FILE"
-            gh release upload "$VERSION" "$SIG_FILE" --clobber || echo "Upload failed but continuing"
-          fi
+          # Copy all signature files
+          find src-tauri/target -name "*.sig" -type f -exec cp {} updater-artifacts/ \; 2>/dev/null || true
 
-      - name: Upload signature to release (Linux)
-        if: startsWith(matrix.platform, 'ubuntu-')
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ github.ref_name }}"
-          TARBALL=$(find src-tauri/target -name "*AppImage.tar.gz" -type f 2>/dev/null | grep -v ".sig" | head -1)
-          if [ -f "$TARBALL" ]; then
-            echo "Uploading tarball: $TARBALL"
-            gh release upload "$VERSION" "$TARBALL" --clobber || true
-          fi
-          SIG_FILE=$(find src-tauri/target -name "*AppImage.tar.gz.sig" -type f 2>/dev/null | head -1)
-          if [ -f "$SIG_FILE" ]; then
-            echo "Uploading signature: $SIG_FILE"
-            gh release upload "$VERSION" "$SIG_FILE" --clobber || echo "Upload failed but continuing"
-          fi
+          # Copy updater bundles (tar.gz and nsis.zip)
+          find src-tauri/target -name "*.app.tar.gz" -type f -exec cp {} updater-artifacts/ \; 2>/dev/null || true
+          find src-tauri/target -name "*.AppImage.tar.gz" -type f -exec cp {} updater-artifacts/ \; 2>/dev/null || true
+          find src-tauri/target -name "*.nsis.zip" -type f -exec cp {} updater-artifacts/ \; 2>/dev/null || true
+
+          echo "=== Collected artifacts ==="
+          ls -la updater-artifacts/ || echo "No artifacts collected"
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.target }}
+          path: updater-artifacts/*
+          if-no-files-found: warn
+          retention-days: 1
 
   updater-json:
     needs: build
@@ -155,49 +138,62 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Wait for assets
-        run: sleep 10
+      - name: Download all updater artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: updater-*
+          path: artifacts
+          merge-multiple: false
 
-      - name: Download signatures and create latest.json
+      - name: Upload artifacts to release and create latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
-          mkdir -p sigs
-          echo "=== Release assets ==="
-          gh release view "$VERSION" --json assets --jq '.assets[].name'
-
-          for asset in $(gh release view "$VERSION" --json assets --jq '.assets[].name'); do
-            if [[ "$asset" == *.sig ]]; then
-              echo "Downloading: $asset"
-              gh release download "$VERSION" --pattern "$asset" --dir sigs || true
-            fi
-          done
-
-          echo "=== Downloaded signatures ==="
-          ls -la sigs/ || echo "No sigs"
+          echo "=== Downloaded artifacts ==="
+          find artifacts -type f | head -50
 
           MACOS_AARCH64_SIG=""
           MACOS_X64_SIG=""
           WINDOWS_SIG=""
           LINUX_SIG=""
 
-          for sig_file in sigs/*.sig; do
-            if [ -f "$sig_file" ]; then
-              filename=$(basename "$sig_file")
-              sig_content=$(cat "$sig_file")
-              echo "Processing: $filename"
-              if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
-                MACOS_AARCH64_SIG="$sig_content"
-              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
-                MACOS_X64_SIG="$sig_content"
-              elif [[ "$filename" == *".nsis.zip.sig" ]]; then
-                WINDOWS_SIG="$sig_content"
-              elif [[ "$filename" == *".AppImage.tar.gz.sig" ]]; then
-                LINUX_SIG="$sig_content"
+          # Upload all artifacts and collect signatures
+          for artifact_dir in artifacts/*/; do
+            echo "Processing directory: $artifact_dir"
+            for file in "$artifact_dir"*; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                echo "Found file: $filename"
+
+                # Upload to release
+                if [[ "$filename" == *.sig ]] || [[ "$filename" == *.tar.gz ]] || [[ "$filename" == *.nsis.zip ]]; then
+                  echo "Uploading: $filename"
+                  gh release upload "$VERSION" "$file" --clobber || echo "Upload failed for $filename"
+                fi
+
+                # Collect signature content
+                if [[ "$filename" == *.sig ]]; then
+                  sig_content=$(cat "$file")
+                  if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
+                    MACOS_AARCH64_SIG="$sig_content"
+                  elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
+                    MACOS_X64_SIG="$sig_content"
+                  elif [[ "$filename" == *".nsis.zip.sig" ]]; then
+                    WINDOWS_SIG="$sig_content"
+                  elif [[ "$filename" == *".AppImage.tar.gz.sig" ]]; then
+                    LINUX_SIG="$sig_content"
+                  fi
+                fi
               fi
-            fi
+            done
           done
+
+          echo "=== Signatures collected ==="
+          echo "macOS aarch64: ${MACOS_AARCH64_SIG:0:50}..."
+          echo "macOS x64: ${MACOS_X64_SIG:0:50}..."
+          echo "Windows: ${WINDOWS_SIG:0:50}..."
+          echo "Linux: ${LINUX_SIG:0:50}..."
 
           VERSION_NUM="${VERSION#v}"
           PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
