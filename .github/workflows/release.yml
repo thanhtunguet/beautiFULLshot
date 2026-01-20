@@ -9,65 +9,33 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-macos:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            args: ''
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
-    outputs:
-      releaseId: ${{ steps.tauri.outputs.releaseId }}
-
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x64
+    runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install Linux dependencies
-        if: startsWith(matrix.platform, 'ubuntu-')
-        run: |
-          if [ '${{ matrix.platform }}' = 'ubuntu-22.04' ]; then
-            sudo add-apt-repository -y ppa:pipewire-debian/pipewire-upstream
-          fi
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-3-bin \
-            libayatana-appindicator3-dev libpipewire-0.3-dev libspa-0.2-dev \
-            libdbus-1-dev libwayland-dev libegl-dev libgbm-dev libfuse2 \
-            libxcb1-dev libxrandr-dev librsvg2-dev libunwind-dev \
-            libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            patchelf pkg-config
-
       - name: Import Apple certificate
-        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -82,116 +50,220 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
-      - name: Install frontend dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Build Tauri app
-        id: tauri
-        uses: tauri-apps/tauri-action@v0.6.1
+      - name: Build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          NO_STRIP: 'true'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'BeautyFullShot ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download this version.'
-          releaseDraft: true
-          prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
+        run: |
+          npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: Save signatures as artifacts
-        uses: actions/upload-artifact@v4
+      - name: Prepare artifacts
+        run: |
+          mkdir -p upload
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          # Copy DMG
+          cp "$BUNDLE_DIR"/dmg/*.dmg upload/ 2>/dev/null || true
+
+          # Copy and rename tarball
+          TARBALL=$(find "$BUNDLE_DIR" -name "*.app.tar.gz" -type f | grep -v ".sig" | head -1)
+          if [ -f "$TARBALL" ]; then
+            cp "$TARBALL" "upload/beautiFULLshot_${{ matrix.arch }}.app.tar.gz"
+          fi
+
+          # Copy and rename signature
+          SIG=$(find "$BUNDLE_DIR" -name "*.app.tar.gz.sig" -type f | head -1)
+          if [ -f "$SIG" ]; then
+            cp "$SIG" "upload/beautiFULLshot_${{ matrix.arch }}.app.tar.gz.sig"
+          fi
+
+          ls -la upload/
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: signatures-${{ matrix.target }}
-          path: |
-            src-tauri/target/**/bundle/**/*.sig
-            src-tauri/target/**/bundle/**/*.tar.gz
-            src-tauri/target/**/bundle/**/*.nsis.zip
-          if-no-files-found: warn
+          name: macos-${{ matrix.arch }}
+          path: upload/*
           retention-days: 1
 
-  updater-json:
-    needs: build
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          mkdir -p upload
+          BUNDLE_DIR="src-tauri/target/release/bundle"
+
+          # Copy EXE
+          cp "$BUNDLE_DIR"/nsis/*-setup.exe upload/ 2>/dev/null || true
+
+          # Copy MSI
+          cp "$BUNDLE_DIR"/msi/*.msi upload/ 2>/dev/null || true
+
+          # Copy NSIS zip and signature
+          cp "$BUNDLE_DIR"/nsis/*.nsis.zip upload/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/nsis/*.nsis.zip.sig upload/ 2>/dev/null || true
+
+          ls -la upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: upload/*
+          retention-days: 1
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: |
+          sudo add-apt-repository -y ppa:pipewire-debian/pipewire-upstream
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-3-bin \
+            libayatana-appindicator3-dev libpipewire-0.3-dev libspa-0.2-dev \
+            libdbus-1-dev libwayland-dev libegl-dev libgbm-dev libfuse2 \
+            libxcb1-dev libxrandr-dev librsvg2-dev libunwind-dev \
+            libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            patchelf pkg-config
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          NO_STRIP: 'true'
+        run: npm run tauri build
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p upload
+          BUNDLE_DIR="src-tauri/target/release/bundle"
+
+          # Copy AppImage
+          cp "$BUNDLE_DIR"/appimage/*.AppImage upload/ 2>/dev/null || true
+
+          # Copy DEB
+          cp "$BUNDLE_DIR"/deb/*.deb upload/ 2>/dev/null || true
+
+          # Copy RPM
+          cp "$BUNDLE_DIR"/rpm/*.rpm upload/ 2>/dev/null || true
+
+          # Copy AppImage tarball and signature
+          cp "$BUNDLE_DIR"/appimage/*.AppImage.tar.gz upload/ 2>/dev/null || true
+          cp "$BUNDLE_DIR"/appimage/*.AppImage.tar.gz.sig upload/ 2>/dev/null || true
+
+          ls -la upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: upload/*
+          retention-days: 1
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Download signature artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          pattern: signatures-*
           path: artifacts
           merge-multiple: false
 
-      - name: Upload signatures and create latest.json
+      - name: Create release and upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
-          echo "=== Downloaded artifacts ==="
-          find artifacts -type f 2>/dev/null | head -50
+          # Create release
+          gh release create "$VERSION" \
+            --repo ${{ github.repository }} \
+            --title "BeautyFullShot $VERSION" \
+            --notes "See the assets to download this version." \
+            --draft
 
+          echo "=== All artifacts ==="
+          find artifacts -type f | sort
+
+          # Upload all artifacts
+          for file in artifacts/**/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "Uploading: $filename"
+              gh release upload "$VERSION" "$file" --repo ${{ github.repository }} --clobber || true
+            fi
+          done
+
+          # Collect signatures for latest.json
           MACOS_AARCH64_SIG=""
           MACOS_X64_SIG=""
           WINDOWS_SIG=""
           LINUX_SIG=""
 
-          # Process artifacts and upload
-          for dir in artifacts/*/; do
-            echo "Processing: $dir"
+          for sig in artifacts/**/*.sig; do
+            if [ -f "$sig" ]; then
+              filename=$(basename "$sig")
+              content=$(cat "$sig")
+              echo "Signature found: $filename (${#content} chars)"
 
-            # Find and upload sig files
-            for sig in "$dir"**/*.sig; do
-              if [ -f "$sig" ]; then
-                filename=$(basename "$sig")
-                echo "Found sig: $filename"
-
-                # Read signature content
-                sig_content=$(cat "$sig")
-
-                # Determine type and save
-                if [[ "$sig" == *"aarch64"*".app.tar.gz.sig" ]]; then
-                  MACOS_AARCH64_SIG="$sig_content"
-                  gh release upload "$VERSION" "$sig" --repo ${{ github.repository }} --clobber 2>/dev/null || true
-                elif [[ "$filename" == *".app.tar.gz.sig" ]] && [[ "$sig" == *"x86_64"* ]]; then
-                  MACOS_X64_SIG="$sig_content"
-                  gh release upload "$VERSION" "$sig" --repo ${{ github.repository }} --clobber 2>/dev/null || true
-                elif [[ "$filename" == *".nsis.zip.sig" ]]; then
-                  WINDOWS_SIG="$sig_content"
-                  gh release upload "$VERSION" "$sig" --repo ${{ github.repository }} --clobber 2>/dev/null || true
-                elif [[ "$filename" == *".AppImage.tar.gz.sig" ]]; then
-                  LINUX_SIG="$sig_content"
-                  gh release upload "$VERSION" "$sig" --repo ${{ github.repository }} --clobber 2>/dev/null || true
-                fi
+              if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
+                MACOS_AARCH64_SIG="$content"
+              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
+                MACOS_X64_SIG="$content"
+              elif [[ "$filename" == *".nsis.zip.sig" ]]; then
+                WINDOWS_SIG="$content"
+              elif [[ "$filename" == *".AppImage.tar.gz.sig" ]]; then
+                LINUX_SIG="$content"
               fi
-            done
-
-            # Upload tarballs if not already uploaded
-            for tarball in "$dir"**/*.tar.gz "$dir"**/*.nsis.zip; do
-              if [ -f "$tarball" ] && [[ "$tarball" != *.sig ]]; then
-                filename=$(basename "$tarball")
-                echo "Uploading tarball: $filename"
-                gh release upload "$VERSION" "$tarball" --repo ${{ github.repository }} --clobber 2>/dev/null || true
-              fi
-            done
+            fi
           done
-
-          echo "=== Signatures collected ==="
-          echo "macOS aarch64: ${MACOS_AARCH64_SIG:0:50}..."
-          echo "macOS x64: ${MACOS_X64_SIG:0:50}..."
-          echo "Windows: ${WINDOWS_SIG:0:50}..."
-          echo "Linux: ${LINUX_SIG:0:50}..."
 
           VERSION_NUM="${VERSION#v}"
           PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          cat > latest.json << EOF
+          cat > latest.json << ENDJSON
           {
             "version": "${VERSION_NUM}",
             "notes": "See the assets to download this version.",
@@ -215,11 +287,11 @@ jobs:
               }
             }
           }
-          EOF
+          ENDJSON
 
           sed -i 's/^          //' latest.json
 
-          echo "=== Generated latest.json ==="
+          echo "=== latest.json ==="
           cat latest.json
 
           gh release upload "$VERSION" latest.json --repo ${{ github.repository }} --clobber
@@ -227,20 +299,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test -- --run
-
-      - name: TypeScript check
-        run: npx tsc --noEmit
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npx tsc --noEmit
