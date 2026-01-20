@@ -28,6 +28,8 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    outputs:
+      releaseId: ${{ steps.tauri.outputs.releaseId }}
 
     steps:
       - name: Checkout
@@ -52,26 +54,12 @@ jobs:
           fi
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libgtk-3-bin \
-            libayatana-appindicator3-dev \
-            libpipewire-0.3-dev \
-            libspa-0.2-dev \
-            libdbus-1-dev \
-            libwayland-dev \
-            libegl-dev \
-            libgbm-dev \
-            libfuse2 \
-            libxcb1-dev \
-            libxrandr-dev \
-            librsvg2-dev \
-            libunwind-dev \
-            libgstreamer1.0-dev \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            patchelf \
-            pkg-config
+            libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-3-bin \
+            libayatana-appindicator3-dev libpipewire-0.3-dev libspa-0.2-dev \
+            libdbus-1-dev libwayland-dev libegl-dev libgbm-dev libfuse2 \
+            libxcb1-dev libxrandr-dev librsvg2-dev libunwind-dev \
+            libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            patchelf pkg-config
 
       - name: Import Apple certificate
         if: matrix.platform == 'macos-latest'
@@ -92,7 +80,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Build but DON'T let tauri-action upload updater JSON (it's broken)
       - name: Build Tauri app
+        id: tauri
         uses: tauri-apps/tauri-action@v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,30 +103,64 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
-      # Find and collect signature files
-      - name: Find signature files
-        id: find-sigs
+      # Manually upload signature files to release (macOS)
+      - name: Upload signature to release (macOS)
+        if: matrix.platform == 'macos-latest'
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== Looking for .sig files ==="
-          find src-tauri/target -name "*.sig" -type f 2>/dev/null || true
+          VERSION="${{ github.ref_name }}"
 
-          # Create sigs directory
-          mkdir -p sigs
+          # Find .app.tar.gz.sig files
+          if [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
+            SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
+            if [ -f "$SIG_FILE" ]; then
+              echo "Uploading macOS ARM64 signature: $SIG_FILE"
+              gh release upload "$VERSION" "$SIG_FILE" --clobber
+            fi
+          elif [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
+            if [ -f "$SIG_FILE" ]; then
+              echo "Uploading macOS x64 signature: $SIG_FILE"
+              gh release upload "$VERSION" "$SIG_FILE" --clobber
+            fi
+          fi
 
-          # Copy all sig files to sigs directory
-          find src-tauri/target -name "*.tar.gz.sig" -type f -exec cp {} sigs/ \; 2>/dev/null || true
-          find src-tauri/target -name "*.nsis.zip.sig" -type f -exec cp {} sigs/ \; 2>/dev/null || true
+      # Manually upload signature files to release (Windows)
+      - name: Upload signature to release (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SIG_FILE=$(find src-tauri/target -name "*.nsis.zip.sig" -type f 2>/dev/null | head -1)
+          if [ -f "$SIG_FILE" ]; then
+            echo "Uploading Windows signature: $SIG_FILE"
+            gh release upload "$VERSION" "$SIG_FILE" --clobber
+          fi
 
-          echo "=== Files in sigs directory ==="
-          ls -la sigs/ || echo "No sigs found"
-
-      - name: Upload signature artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sig-${{ matrix.target }}
-          path: sigs/
-          if-no-files-found: warn
+      # Manually upload signature files to release (Linux)
+      - name: Upload signature to release (Linux)
+        if: startsWith(matrix.platform, 'ubuntu-')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Upload AppImage.tar.gz (needed for updater)
+          TARBALL=$(find src-tauri/target -name "*AppImage.tar.gz" -type f 2>/dev/null | grep -v ".sig" | head -1)
+          if [ -f "$TARBALL" ]; then
+            echo "Uploading Linux tarball: $TARBALL"
+            gh release upload "$VERSION" "$TARBALL" --clobber || true
+          fi
+          # Upload signature
+          SIG_FILE=$(find src-tauri/target -name "*AppImage.tar.gz.sig" -type f 2>/dev/null | head -1)
+          if [ -f "$SIG_FILE" ]; then
+            echo "Uploading Linux signature: $SIG_FILE"
+            gh release upload "$VERSION" "$SIG_FILE" --clobber
+          fi
 
   # Create and upload latest.json after all builds complete
   updater-json:
@@ -146,25 +170,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all signature artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: sig-*
-          path: signatures
-          merge-multiple: true
+      - name: Wait for all assets to be uploaded
+        run: sleep 10
 
-      - name: List downloaded signatures
+      - name: Download signature files from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "=== All files in signatures ==="
-          find signatures -type f 2>/dev/null || echo "No signatures found"
-          echo "=== Contents ==="
-          for f in signatures/*.sig 2>/dev/null; do
-            if [ -f "$f" ]; then
-              echo "--- $f ---"
-              cat "$f"
-              echo ""
+          VERSION="${{ github.ref_name }}"
+          mkdir -p sigs
+
+          # List all assets
+          echo "=== Release assets ==="
+          gh release view "$VERSION" --json assets --jq '.assets[].name'
+
+          # Download sig files
+          for asset in $(gh release view "$VERSION" --json assets --jq '.assets[].name'); do
+            if [[ "$asset" == *.sig ]]; then
+              echo "Downloading: $asset"
+              gh release download "$VERSION" --pattern "$asset" --dir sigs || true
             fi
           done
+
+          echo "=== Downloaded signatures ==="
+          ls -la sigs/
 
       - name: Create latest.json
         env:
@@ -175,18 +204,17 @@ jobs:
           WINDOWS_SIG=""
           LINUX_SIG=""
 
-          for sig_file in signatures/*.sig; do
+          for sig_file in sigs/*.sig; do
             if [ -f "$sig_file" ]; then
               filename=$(basename "$sig_file")
               sig_content=$(cat "$sig_file")
 
               echo "Processing: $filename"
 
-              # Match based on filename patterns
               if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
                 MACOS_AARCH64_SIG="$sig_content"
                 echo "  -> macOS ARM64"
-              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]] || [[ "$filename" == *"x86_64"*".app.tar.gz.sig" ]]; then
+              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
                 MACOS_X64_SIG="$sig_content"
                 echo "  -> macOS x64"
               elif [[ "$filename" == *".nsis.zip.sig" ]]; then
@@ -202,30 +230,30 @@ jobs:
           VERSION_NUM="${VERSION#v}"
 
           cat > latest.json << EOJSON
-          {
-            "version": "${VERSION_NUM}",
-            "notes": "See the assets to download this version.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${MACOS_AARCH64_SIG}",
-                "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "${MACOS_X64_SIG}",
-                "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_x64.app.tar.gz"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage.tar.gz"
-              },
-              "windows-x86_64": {
-                "signature": "${WINDOWS_SIG}",
-                "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_x64-setup.nsis.zip"
-              }
-            }
-          }
-          EOJSON
+{
+  "version": "${VERSION_NUM}",
+  "notes": "See the assets to download this version.",
+  "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "${MACOS_AARCH64_SIG}",
+      "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_aarch64.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "${MACOS_X64_SIG}",
+      "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_x64.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "${LINUX_SIG}",
+      "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "${WINDOWS_SIG}",
+      "url": "https://github.com/itsddvn/beautiFULLshot/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_x64-setup.nsis.zip"
+    }
+  }
+}
+EOJSON
 
           echo "Generated latest.json:"
           cat latest.json
