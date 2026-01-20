@@ -113,30 +113,29 @@ jobs:
           includeUpdaterJson: false
           args: ${{ matrix.args }}
 
-      # Upload signature files as artifacts for the updater job
-      - name: Upload signature artifacts (macOS)
-        if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sig-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz.sig
-          if-no-files-found: warn
+      # Find and collect signature files
+      - name: Find signature files
+        id: find-sigs
+        shell: bash
+        run: |
+          echo "=== Looking for .sig files ==="
+          find src-tauri/target -name "*.sig" -type f 2>/dev/null || true
 
-      - name: Upload signature artifacts (Windows)
-        if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sig-${{ matrix.target }}
-          path: |
-            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
-          if-no-files-found: warn
+          # Create sigs directory
+          mkdir -p sigs
 
-      - name: Upload signature artifacts (Linux)
-        if: startsWith(matrix.platform, 'ubuntu-')
+          # Copy all sig files to sigs directory
+          find src-tauri/target -name "*.tar.gz.sig" -type f -exec cp {} sigs/ \; 2>/dev/null || true
+          find src-tauri/target -name "*.nsis.zip.sig" -type f -exec cp {} sigs/ \; 2>/dev/null || true
+
+          echo "=== Files in sigs directory ==="
+          ls -la sigs/ || echo "No sigs found"
+
+      - name: Upload signature artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sig-${{ matrix.target }}
-          path: src-tauri/target/release/bundle/appimage/*.AppImage.tar.gz.sig
+          path: sigs/
           if-no-files-found: warn
 
   # Create and upload latest.json after all builds complete
@@ -144,6 +143,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all signature artifacts
         uses: actions/download-artifact@v4
         with:
@@ -152,40 +154,54 @@ jobs:
           merge-multiple: true
 
       - name: List downloaded signatures
-        run: find signatures -type f 2>/dev/null || echo "No signatures found"
+        run: |
+          echo "=== All files in signatures ==="
+          find signatures -type f 2>/dev/null || echo "No signatures found"
+          echo "=== Contents ==="
+          for f in signatures/*.sig 2>/dev/null; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              cat "$f"
+              echo ""
+            fi
+          done
 
       - name: Create latest.json
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          # Read signatures
           MACOS_AARCH64_SIG=""
           MACOS_X64_SIG=""
           WINDOWS_SIG=""
           LINUX_SIG=""
 
-          # Find and read signature files
           for sig_file in signatures/*.sig; do
             if [ -f "$sig_file" ]; then
               filename=$(basename "$sig_file")
               sig_content=$(cat "$sig_file")
 
-              case "$filename" in
-                *aarch64*tar.gz.sig) MACOS_AARCH64_SIG="$sig_content" ;;
-                *x64*tar.gz.sig|*x86_64*darwin*tar.gz.sig) MACOS_X64_SIG="$sig_content" ;;
-                *.nsis.zip.sig) WINDOWS_SIG="$sig_content" ;;
-                *.AppImage.tar.gz.sig) LINUX_SIG="$sig_content" ;;
-              esac
+              echo "Processing: $filename"
 
-              echo "Found: $filename"
+              # Match based on filename patterns
+              if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
+                MACOS_AARCH64_SIG="$sig_content"
+                echo "  -> macOS ARM64"
+              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]] || [[ "$filename" == *"x86_64"*".app.tar.gz.sig" ]]; then
+                MACOS_X64_SIG="$sig_content"
+                echo "  -> macOS x64"
+              elif [[ "$filename" == *".nsis.zip.sig" ]]; then
+                WINDOWS_SIG="$sig_content"
+                echo "  -> Windows"
+              elif [[ "$filename" == *".AppImage.tar.gz.sig" ]]; then
+                LINUX_SIG="$sig_content"
+                echo "  -> Linux"
+              fi
             fi
           done
 
-          # Remove 'v' prefix from version
           VERSION_NUM="${VERSION#v}"
 
-          # Build latest.json
-          cat > latest.json << EOF
+          cat > latest.json << EOJSON
           {
             "version": "${VERSION_NUM}",
             "notes": "See the assets to download this version.",
@@ -209,7 +225,7 @@ jobs:
               }
             }
           }
-          EOF
+          EOJSON
 
           echo "Generated latest.json:"
           cat latest.json
@@ -217,8 +233,7 @@ jobs:
       - name: Upload latest.json to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} latest.json --clobber
+        run: gh release upload ${{ github.ref_name }} latest.json --clobber
 
   test:
     runs-on: ubuntu-latest
