@@ -131,7 +131,7 @@ export function CanvasEditor() {
     return false;
   }, []);
 
-  // Zoom with mouse wheel
+  // Zoom with pinch gesture (ctrlKey) / pan with two-finger scroll
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
@@ -139,29 +139,40 @@ export function CanvasEditor() {
       const stage = stageRef.current;
       if (!stage) return;
 
-      const oldScale = scale;
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
+      const isPinch = e.evt.ctrlKey;
 
-      const mousePointTo = {
-        x: (pointer.x - position.x) / oldScale,
-        y: (pointer.y - position.y) / oldScale,
-      };
+      if (isPinch) {
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
 
-      const direction = e.evt.deltaY > 0 ? -1 : 1;
-      const newScale =
-        direction > 0 ? oldScale * ZOOM.FACTOR : oldScale / ZOOM.FACTOR;
+        const oldScale = scale;
 
-      const clampedScale = Math.max(
-        ZOOM.MIN_SCALE,
-        Math.min(ZOOM.MAX_SCALE, newScale)
-      );
+        const mousePointTo = {
+          x: (pointer.x - position.x) / oldScale,
+          y: (pointer.y - position.y) / oldScale,
+        };
 
-      setScale(clampedScale);
-      setPosition(
-        pointer.x - mousePointTo.x * clampedScale,
-        pointer.y - mousePointTo.y * clampedScale
-      );
+        const direction = e.evt.deltaY > 0 ? -1 : 1;
+        const zoomFactor = ZOOM.PINCH_FACTOR;
+        const newScale =
+          direction > 0 ? oldScale * zoomFactor : oldScale / zoomFactor;
+
+        const clampedScale = Math.max(
+          ZOOM.MIN_SCALE,
+          Math.min(ZOOM.MAX_SCALE, newScale)
+        );
+
+        setScale(clampedScale);
+        setPosition(
+          pointer.x - mousePointTo.x * clampedScale,
+          pointer.y - mousePointTo.y * clampedScale
+        );
+      } else {
+        const newX = position.x - e.evt.deltaX;
+        const newY = position.y - e.evt.deltaY;
+
+        setPosition(newX, newY);
+      }
     },
     [scale, position, setScale, setPosition]
   );
