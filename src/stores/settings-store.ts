@@ -50,7 +50,7 @@ export interface HotkeyConfig {
   copy: string;
 }
 
-export type SaveLocation = 'pictures' | 'desktop' | 'custom';
+export type SaveLocation = 'default' | 'custom';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 interface SettingsState {
@@ -93,7 +93,7 @@ const DEFAULT_STATE = {
   startMinimized: false,
   closeToTray: true,
   showNotifications: true,
-  saveLocation: 'pictures' as SaveLocation,
+  saveLocation: 'default' as SaveLocation,
   customSavePath: null,
   theme: 'dark' as ThemeMode,
 };

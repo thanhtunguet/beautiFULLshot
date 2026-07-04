@@ -2,8 +2,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { ExportFormat } from '../stores/export-store';
 import type { ProjectLoadResult, ProjectSaveData } from '../types/project';
+import type { ExportFormat } from '../stores/export-store';
 
 /**
  * Normalize Windows extended-length path prefix (\\?\)
@@ -42,21 +42,16 @@ export async function saveFile(
 }
 
 /**
- * Get Pictures directory with BeautyShot subfolder
+ * Get (and create if needed) the beautiFULLshot project directory.
+ * Returns ~/Pictures/beautiFULLshot on all platforms.
  */
-export async function getPicturesDir(): Promise<string> {
-  return await invoke('get_pictures_dir');
+export async function getProjectDir(): Promise<string> {
+  return await invoke<string>('get_project_dir');
 }
 
 /**
- * Get Desktop directory
- */
-export async function getDesktopDir(): Promise<string> {
-  return await invoke('get_desktop_dir');
-}
-
-/**
- * Show native save dialog
+ * Show native save dialog for image export
+ * Defaults to the beautiFULLshot project directory
  */
 export async function showSaveDialog(
   defaultName: string,
@@ -67,8 +62,9 @@ export async function showSaveDialog(
       ? [{ name: 'PNG Image', extensions: ['png'] }]
       : [{ name: 'JPEG Image', extensions: ['jpg', 'jpeg'] }];
 
+  const projectDir = await getProjectDir();
   const path = await save({
-    defaultPath: defaultName,
+    defaultPath: `${projectDir}/${defaultName}`,
     filters,
   });
 
@@ -111,10 +107,13 @@ export async function deleteFile(
 
 /**
  * Show native open file dialog — accepts both .bshot projects and image files
+ * Defaults to the beautiFULLshot project directory (~/Pictures/beautiFULLshot)
  * Returns the selected file path, or null if cancelled
  */
 export async function showOpenDialog(): Promise<string | null> {
+  const projectDir = await getProjectDir();
   const selected = await open({
+    defaultPath: projectDir,
     filters: [
       { name: 'All Supported', extensions: ['bshot', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
       { name: 'beautiFULLshot Project', extensions: ['bshot'] },

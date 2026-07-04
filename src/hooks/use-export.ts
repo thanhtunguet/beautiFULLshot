@@ -17,8 +17,7 @@ import {
 } from '../utils/export-utils';
 import {
   saveFile,
-  getPicturesDir,
-  getDesktopDir,
+  getProjectDir,
   showSaveDialog,
   normalizePath,
   extractFilename,
@@ -164,19 +163,10 @@ export function useExport() {
    * Get save directory based on settings
    */
   const getSaveDir = useCallback(async (): Promise<string> => {
-    switch (saveLocation) {
-      case 'desktop':
-        return await getDesktopDir();
-      case 'custom':
-        if (customSavePath) {
-          return customSavePath;
-        }
-        // Fallback to pictures if custom path not set
-        return await getPicturesDir();
-      case 'pictures':
-      default:
-        return await getPicturesDir();
+    if (saveLocation === 'custom' && customSavePath) {
+      return customSavePath;
     }
+    return await getProjectDir();
   }, [saveLocation, customSavePath]);
 
   /**

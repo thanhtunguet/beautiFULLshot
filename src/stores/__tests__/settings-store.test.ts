@@ -15,7 +15,7 @@ describe('Settings Store', () => {
       startMinimized: false,
       closeToTray: true,
       showNotifications: true,
-      saveLocation: 'pictures',
+      saveLocation: 'default',
       customSavePath: null,
     });
   });
@@ -42,9 +42,9 @@ describe('Settings Store', () => {
       expect(state.startMinimized).toBe(false);
     });
 
-    it('should have pictures as default save location', () => {
+    it('should have default as default save location', () => {
       const state = useSettingsStore.getState();
-      expect(state.saveLocation).toBe('pictures');
+      expect(state.saveLocation).toBe('default');
     });
 
     it('should have null customSavePath by default', () => {
@@ -98,9 +98,9 @@ describe('Settings Store', () => {
   });
 
   describe('Save Location', () => {
-    it('should set save location to desktop', () => {
-      useSettingsStore.getState().setSaveLocation('desktop');
-      expect(useSettingsStore.getState().saveLocation).toBe('desktop');
+    it('should set save location to default', () => {
+      useSettingsStore.getState().setSaveLocation('default');
+      expect(useSettingsStore.getState().saveLocation).toBe('default');
     });
 
     it('should set save location to custom', () => {
@@ -136,7 +136,7 @@ describe('Settings Store', () => {
       // Check reset to actual DEFAULT_HOTKEYS from settings-store.ts
       expect(state.hotkeys.capture).toBe('CommandOrControl+Option+1');
       expect(state.closeToTray).toBe(true);
-      expect(state.saveLocation).toBe('pictures');
+      expect(state.saveLocation).toBe('default');
       expect(state.customSavePath).toBeNull();
     });
   });
@@ -145,12 +145,12 @@ describe('Settings Store', () => {
     it('should allow updating multiple settings independently', () => {
       useSettingsStore.getState().setHotkey('capture', 'Alt+C');
       useSettingsStore.getState().setCloseToTray(false);
-      useSettingsStore.getState().setSaveLocation('desktop');
+      useSettingsStore.getState().setSaveLocation('custom');
 
       const state = useSettingsStore.getState();
       expect(state.hotkeys.capture).toBe('Alt+C');
       expect(state.closeToTray).toBe(false);
-      expect(state.saveLocation).toBe('desktop');
+      expect(state.saveLocation).toBe('custom');
     });
   });
 

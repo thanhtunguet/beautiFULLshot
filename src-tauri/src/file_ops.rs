@@ -129,20 +129,18 @@ pub async fn save_file(path: String, data: Vec<u8>) -> Result<String, String> {
     Ok(canonical_path.to_string_lossy().to_string())
 }
 
-/// Get Pictures directory with BeautyShot subfolder
+/// Get (and create if needed) the beautiFULLshot project directory
+/// Returns ~/Pictures/beautiFULLshot on all platforms
 #[tauri::command]
-pub fn get_pictures_dir() -> Result<String, String> {
-    dirs::picture_dir()
-        .map(|p| p.join("BeautyShot").to_string_lossy().to_string())
-        .ok_or_else(|| "Could not find Pictures directory".to_string())
-}
+pub fn get_project_dir() -> Result<String, String> {
+    let dir = dirs::picture_dir()
+        .map(|p| p.join("beautiFULLshot"))
+        .ok_or_else(|| "Could not find Pictures directory".to_string())?;
 
-/// Get Desktop directory
-#[tauri::command]
-pub fn get_desktop_dir() -> Result<String, String> {
-    dirs::desktop_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .ok_or_else(|| "Could not find Desktop directory".to_string())
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+
+    Ok(dir.to_string_lossy().to_string())
 }
 
 // ─── Project File Operations ───────────────────────────────────────

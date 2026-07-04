@@ -14,6 +14,7 @@ import { toast } from '../stores/toast-store';
 import {
   writeProject,
   showOpenDialog,
+  getProjectDir,
   normalizePath,
 } from '../utils/file-api';
 import {
@@ -96,8 +97,9 @@ export function useFileMenu({
           )}${pad(now.getDate())}_${pad(now.getHours())}${pad(
             now.getMinutes()
           )}${pad(now.getSeconds())}.bshot`;
+          const projectDir = await getProjectDir();
           savePath = await save({
-            defaultPath: defaultName,
+            defaultPath: `${projectDir}/${defaultName}`,
             filters: [
               { name: 'beautiFULLshot Project', extensions: ['bshot'] },
             ],

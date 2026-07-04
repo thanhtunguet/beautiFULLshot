@@ -327,7 +327,7 @@ export function SettingsModal({ isOpen, onClose }: Props) {
           <section>
             <h3 className="font-medium mb-3 text-gray-700 dark:text-gray-200">Default Save Location</h3>
             <div className="space-y-2">
-              {(['pictures', 'desktop', 'custom'] as const).map((loc) => (
+              {(['default', 'custom'] as const).map((loc) => (
                 <label
                   key={loc}
                   className="flex items-center gap-3 cursor-pointer glass-flat rounded-xl p-3 transition-all hover:bg-white/20 dark:hover:bg-white/5"
@@ -339,7 +339,9 @@ export function SettingsModal({ isOpen, onClose }: Props) {
                     onChange={() => settings.setSaveLocation(loc)}
                     className="w-4 h-4 border-gray-300 dark:border-gray-600 text-orange-500 focus:ring-orange-500"
                   />
-                  <span className="text-sm text-gray-600 dark:text-gray-300 capitalize">{loc}</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                    {loc === 'default' ? 'beautiFULLshot folder (~/Pictures/beautiFULLshot)' : 'Custom path'}
+                  </span>
                 </label>
               ))}
 
