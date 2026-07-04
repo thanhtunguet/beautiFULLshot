@@ -3,7 +3,6 @@
 import { useEffect, useCallback } from 'react';
 import { useAnnotationStore } from '../stores/annotation-store';
 import { useSettingsStore } from '../stores/settings-store';
-import { useProjectStore } from '../stores/project-store';
 import { useExport } from './use-export';
 import { projectSaveRef } from './use-file-menu';
 
@@ -57,7 +56,7 @@ function matchesHotkey(e: KeyboardEvent, hotkey: string): boolean {
 export function useKeyboardShortcuts() {
   const { selectedId, deleteSelected, duplicateSelected, setSelected, setTool, undo, redo } = useAnnotationStore();
   const { hotkeys } = useSettingsStore();
-  const { quickSave, copyToClipboard } = useExport();
+  const { copyToClipboard } = useExport();
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -72,17 +71,13 @@ export function useKeyboardShortcuts() {
       const isMod = e.metaKey || e.ctrlKey;
 
       // Cmd+S / custom Save hotkey
+      // Always saves as a .bshot project. If no project exists yet,
+      // handleSave prompts the user to name and choose a save location.
       // The Rust File > Save menu item has NO keyboard accelerator to avoid
-      // double-firing with this browser handler. We are the sole Cmd+S handler.
-      // When a project is open, delegate to use-file-menu.ts's handleSave via
-      // the exported ref. Otherwise, fall back to quickSave (PNG export).
+      // double-firing with this browser handler.
       if (matchesHotkey(e, hotkeys.save)) {
         e.preventDefault();
-        if (useProjectStore.getState().isOpen) {
-          projectSaveRef.current?.();
-        } else {
-          quickSave();
-        }
+        projectSaveRef.current?.();
         return;
       }
 
@@ -165,7 +160,7 @@ export function useKeyboardShortcuts() {
           break;
       }
     },
-    [selectedId, deleteSelected, duplicateSelected, setSelected, setTool, quickSave, copyToClipboard, undo, redo, hotkeys]
+    [selectedId, deleteSelected, duplicateSelected, setSelected, setTool, copyToClipboard, undo, redo, hotkeys]
   );
 
   useEffect(() => {
