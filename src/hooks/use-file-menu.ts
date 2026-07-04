@@ -46,16 +46,21 @@ export function useFileMenu({
 }: UseFileMenuOptions) {
   const projectStore = useProjectStore;
 
-  // Re-entrancy guard: prevent concurrent export operations
-  // (the native save dialog is blocking; a double event delivery could
-  // otherwise open a second dialog after the user cancels the first)
-  const isExportingRef = useRef(false);
+  // Re-entrancy guards: native dialogs are blocking; double event
+  // delivery would open a second dialog after the user cancels the first
+  const isBusyRef = useRef(false);
 
   // ─── Open ────────────────────────────────────────────────────
   const handleOpen = useCallback(async (_event: Event<unknown>) => {
-    const path = await showOpenDialog();
-    if (!path) return;
-    await openProjectFile(path);
+    if (isBusyRef.current) return;
+    isBusyRef.current = true;
+    try {
+      const path = await showOpenDialog();
+      if (!path) return;
+      await openProjectFile(path);
+    } finally {
+      isBusyRef.current = false;
+    }
   }, []);
 
   // ─── Save ────────────────────────────────────────────────────
@@ -119,13 +124,13 @@ export function useFileMenu({
   // ─── Export ──────────────────────────────────────────────────
   const handleExport = useCallback(
     async (_event: Event<unknown>) => {
-      if (isExportingRef.current) return;
+      if (isBusyRef.current) return;
       if (exportSaveAsRef.current) {
-        isExportingRef.current = true;
+        isBusyRef.current = true;
         try {
           await exportSaveAsRef.current();
         } finally {
-          isExportingRef.current = false;
+          isBusyRef.current = false;
         }
       }
     },
