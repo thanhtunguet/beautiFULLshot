@@ -9,7 +9,9 @@ use tauri::{Emitter, WindowEvent};
 use tauri::{Manager, RunEvent};
 
 #[cfg(target_os = "macos")]
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 
 /// Global flag to track if app should actually quit (from tray menu)
 /// vs just hide to tray (from Cmd+Q or window close)
@@ -61,12 +63,19 @@ pub fn run() {
 
                 // Create app submenu (first menu on macOS)
                 let app_submenu = SubmenuBuilder::new(handle, "beautiFULLshot")
-                    .item(&PredefinedMenuItem::about(handle, Some("About beautiFULLshot"), Some(about_metadata))?)
+                    .item(&PredefinedMenuItem::about(
+                        handle,
+                        Some("About beautiFULLshot"),
+                        Some(about_metadata),
+                    )?)
                     .separator()
                     .item(&hide_item)
                     .separator()
                     .item(&PredefinedMenuItem::hide(handle, Some("Hide"))?)
-                    .item(&PredefinedMenuItem::hide_others(handle, Some("Hide Others"))?)
+                    .item(&PredefinedMenuItem::hide_others(
+                        handle,
+                        Some("Hide Others"),
+                    )?)
                     .item(&PredefinedMenuItem::show_all(handle, Some("Show All"))?)
                     .build()?;
 
@@ -80,10 +89,10 @@ pub fn run() {
                 let file_export = MenuItemBuilder::with_id("file_export", "Export...")
                     .accelerator("CmdOrCtrl+Shift+E")
                     .build(handle)?;
-                let file_close = MenuItemBuilder::with_id("file_close", "Close Screenshot")
-                    .build(handle)?;
-                let file_delete = MenuItemBuilder::with_id("file_delete", "Delete Current Project")
-                    .build(handle)?;
+                let file_close =
+                    MenuItemBuilder::with_id("file_close", "Close Project").build(handle)?;
+                let file_delete =
+                    MenuItemBuilder::with_id("file_delete", "Delete Project").build(handle)?;
 
                 let file_submenu = SubmenuBuilder::new(handle, "File")
                     .item(&file_open)
@@ -132,11 +141,12 @@ pub fn run() {
                             if let Some(window) = handle_clone.get_webview_window("main") {
                                 let _ = window.hide();
                             }
-                            let _ = handle_clone.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            let _ = handle_clone
+                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
                         }
                         // File menu events — forward to frontend
-                        "file_open" | "file_save" | "file_export"
-                        | "file_close" | "file_delete" => {
+                        "file_open" | "file_save" | "file_export" | "file_close"
+                        | "file_delete" => {
                             if let Some(window) = handle_clone.get_webview_window("main") {
                                 let frontend_event = format!("menu-{}", event_id.replace('_', "-"));
                                 let _ = window.emit(&frontend_event, ());

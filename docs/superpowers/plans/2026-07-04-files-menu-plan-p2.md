@@ -14,7 +14,7 @@
 **Acceptance Criteria:**
 - [ ] File submenu appears before Edit in the macOS menu bar
 - [ ] Open (Cmd+O), Save (Cmd+S), Export (Cmd+Shift+E) have keyboard accelerators
-- [ ] Close Screenshot and Delete have no accelerators
+- [ ] Close Project and Delete have no accelerators
 - [ ] Each item emits: `menu-file-open`, `menu-file-save`, `menu-file-export`, `menu-file-close`, `menu-file-delete`
 
 **Verify:** `cd src-tauri && cargo build 2>&1 | tail -3` → `Finished`
@@ -52,9 +52,9 @@ Insert the File submenu between the app submenu and Edit submenu blocks:
                 let file_export = MenuItemBuilder::with_id("file_export", "Export...")
                     .accelerator("CmdOrCtrl+Shift+E")
                     .build(handle)?;
-                let file_close = MenuItemBuilder::with_id("file_close", "Close Screenshot")
+                let file_close = MenuItemBuilder::with_id("file_close", "Close Project")
                     .build(handle)?;
-                let file_delete = MenuItemBuilder::with_id("file_delete", "Delete Current Project")
+                let file_delete = MenuItemBuilder::with_id("file_delete", "Delete Project")
                     .build(handle)?;
 
                 let file_submenu = SubmenuBuilder::new(handle, "File")

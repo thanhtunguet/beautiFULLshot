@@ -5,7 +5,7 @@
 
 ## Overview
 
-Add a native "File" menu to the macOS menu bar with Open, Save, Export, Close Screenshot, and Delete operations. Introduce a `.bshot` project file format (ZIP archive) that bundles the source screenshot and annotation/decoration metadata so users can save and resume editing sessions.
+Add a native "File" menu to the macOS menu bar with Open, Save, Export, Close Project, and Delete operations. Introduce a `.bshot` project file format (ZIP archive) that bundles the source screenshot and annotation/decoration metadata so users can save and resume editing sessions.
 
 ## Architecture
 
@@ -107,8 +107,8 @@ File
   Save                 Cmd+S         → emit "menu-file-save"
   Export...            Cmd+Shift+E   → emit "menu-file-export"
   ─────────────────────
-  Close Screenshot                   → emit "menu-file-close"
-  Delete Current Project             → emit "menu-file-delete"
+  Close Project                   → emit "menu-file-close"
+  Delete Project             → emit "menu-file-delete"
 ```
 
 Implementation uses `SubmenuBuilder::new(handle, "File")` with `MenuItemBuilder` for each item, matching the existing pattern for the Edit submenu (line 74 of `lib.rs`).
@@ -181,13 +181,13 @@ interface ProjectState {
 
 Listens for the five Tauri events and orchestrates actions:
 
-| Event | Behavior |
-|-------|----------|
-| `menu-file-open` | Native open dialog (`.bshot` filter) → `invoke("read_project")` → restore canvas + annotations + background + export stores → set `isOpen=true`, `isDirty=false` |
-| `menu-file-save` | If `filePath` set: serialize state → `invoke("write_project")`. If no `filePath`: show save dialog → save → set path. Sets `isDirty=false` |
-| `menu-file-export` | Delegates to existing `useExport().saveAs()` |
-| `menu-file-close` | Auto-save if dirty and filePath exists → clear canvas + annotations + background → `isOpen=false` |
-| `menu-file-delete` | Open `DeleteConfirmModal` |
+| Event              | Behavior                                                                                                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `menu-file-open`   | Native open dialog (`.bshot` filter) → `invoke("read_project")` → restore canvas + annotations + background + export stores → set `isOpen=true`, `isDirty=false` |
+| `menu-file-save`   | If `filePath` set: serialize state → `invoke("write_project")`. If no `filePath`: show save dialog → save → set path. Sets `isDirty=false`                       |
+| `menu-file-export` | Delegates to existing `useExport().saveAs()`                                                                                                                     |
+| `menu-file-close`  | Auto-save if dirty and filePath exists → clear canvas + annotations + background → `isOpen=false`                                                                |
+| `menu-file-delete` | Open `DeleteConfirmModal`                                                                                                                                        |
 
 ### New Component: `delete-confirm-modal.tsx`
 
@@ -218,29 +218,29 @@ Existing Cmd+S (Save) and Cmd+C (Copy) hotkeys in `settings-store.ts` remain unc
 
 ## Error Handling
 
-| Scenario | Handling |
-|----------|----------|
-| Open fails (corrupt ZIP, wrong version) | Toast: "Could not open project: {reason}" |
-| Save fails (disk full, permission) | Toast: "Could not save project: {reason}" |
-| Delete fails (trash unavailable, permission) | Toast with specific reason |
-| Missing wallpaper file at saved path | Silently fall back to transparent background |
-| Drag-drop non-.bshot file | Existing behavior (open as image) |
-| Close with unsaved + auto-save fails | Still close, but warn: "Changes could not be saved" |
-| Open project with version > current | Toast: "Project was created with a newer version" |
+| Scenario                                     | Handling                                            |
+| -------------------------------------------- | --------------------------------------------------- |
+| Open fails (corrupt ZIP, wrong version)      | Toast: "Could not open project: {reason}"           |
+| Save fails (disk full, permission)           | Toast: "Could not save project: {reason}"           |
+| Delete fails (trash unavailable, permission) | Toast with specific reason                          |
+| Missing wallpaper file at saved path         | Silently fall back to transparent background        |
+| Drag-drop non-.bshot file                    | Existing behavior (open as image)                   |
+| Close with unsaved + auto-save fails         | Still close, but warn: "Changes could not be saved" |
+| Open project with version > current          | Toast: "Project was created with a newer version"   |
 
 ## Files Touched
 
-| File | Change |
-|------|--------|
-| `src-tauri/Cargo.toml` | Add `zip`, `trash` dependencies |
-| `src-tauri/src/lib.rs` | Add File submenu, menu event handlers |
-| `src-tauri/src/file_ops.rs` | Add `read_project`, `write_project`, `delete_file` commands |
-| `src/stores/project-store.ts` | **New** — project state management |
-| `src/hooks/use-file-menu.ts` | **New** — menu event handler |
-| `src/components/layout/delete-confirm-modal.tsx` | **New** — delete confirmation |
-| `src/components/layout/editor-layout.tsx` | Add `.bshot` drag-drop handling |
-| `src/utils/file-api.ts` | Add `readProject`, `writeProject`, `deleteFile`, `showOpenDialog` |
-| `src/types/project.ts` | **New** — `ProjectData`, `ProjectMetadata` etc. |
+| File                                             | Change                                                            |
+| ------------------------------------------------ | ----------------------------------------------------------------- |
+| `src-tauri/Cargo.toml`                           | Add `zip`, `trash` dependencies                                   |
+| `src-tauri/src/lib.rs`                           | Add File submenu, menu event handlers                             |
+| `src-tauri/src/file_ops.rs`                      | Add `read_project`, `write_project`, `delete_file` commands       |
+| `src/stores/project-store.ts`                    | **New** — project state management                                |
+| `src/hooks/use-file-menu.ts`                     | **New** — menu event handler                                      |
+| `src/components/layout/delete-confirm-modal.tsx` | **New** — delete confirmation                                     |
+| `src/components/layout/editor-layout.tsx`        | Add `.bshot` drag-drop handling                                   |
+| `src/utils/file-api.ts`                          | Add `readProject`, `writeProject`, `deleteFile`, `showOpenDialog` |
+| `src/types/project.ts`                           | **New** — `ProjectData`, `ProjectMetadata` etc.                   |
 
 ## Testing
 

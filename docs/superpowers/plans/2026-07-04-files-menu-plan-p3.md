@@ -116,7 +116,7 @@ git commit -m "feat: add readProject, writeProject, deleteFile, showOpenDialog t
 
 ```typescript
 // useFileMenu — Listens for native File menu events and orchestrates actions
-// Open, Save, Export, Close Screenshot, Delete Current Project
+// Open, Save, Export, Close Project, Delete Project
 
 import { useEffect, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';

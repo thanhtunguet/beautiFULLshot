@@ -399,7 +399,7 @@ git commit -m "feat: add .bshot drag-drop support and shared project-io utilitie
 - [ ] `useFileMenu()` is called in App component
 - [ ] A ref to `useExport().saveAs` is created for the export menu item
 - [ ] `DeleteConfirmModal` is rendered alongside `ToastContainer` and `UpdateModal`
-- [ ] Full end-to-end: Cmd+O opens dialog, Cmd+S saves, Cmd+Shift+E exports, Close Screenshot clears, Delete shows modal
+- [ ] Full end-to-end: Cmd+O opens dialog, Cmd+S saves, Cmd+Shift+E exports, Close Project clears, Delete shows modal
 
 **Verify:** `npx tsc --noEmit` → no errors, then manual verification in macOS
 
@@ -495,7 +495,7 @@ git commit -m "feat: wire File menu hook and DeleteConfirmModal into App"
 2. Check menu bar: File menu appears before Edit with all 5 items
 3. Cmd+O → file picker opens with .bshot filter
 4. Take a screenshot, annotate, Cmd+S → save dialog → verify .bshot file created
-5. Close Screenshot → canvas clears (auto-saves if dirty)
+5. Close Project → canvas clears (auto-saves if dirty)
 6. Cmd+O → re-open saved file → annotations restored
 7. Delete → confirmation modal → Move to Trash → file gone
 8. Drag .bshot file onto app window → opens as project
