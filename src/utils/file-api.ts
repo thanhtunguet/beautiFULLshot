@@ -91,7 +91,11 @@ export async function writeProject(
   path: string,
   data: ProjectSaveData
 ): Promise<string> {
-  return await invoke<string>('write_project', { path, data });
+  return await invoke<string>('write_project', {
+    path,
+    metadata: data.metadata,
+    screenshotBytes: data.screenshotBytes,
+  });
 }
 
 /**

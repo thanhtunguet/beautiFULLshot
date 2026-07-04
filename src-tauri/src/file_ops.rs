@@ -180,7 +180,11 @@ pub async fn read_project(path: String) -> Result<ProjectData, String> {
 
 /// Write a .bshot project file (ZIP archive)
 #[tauri::command]
-pub async fn write_project(path: String, data: ProjectData) -> Result<String, String> {
+pub async fn write_project(
+    path: String,
+    metadata: ProjectMetadata,
+    screenshot_bytes: Vec<u8>,
+) -> Result<String, String> {
     let path = PathBuf::from(&path);
 
     let path = if path.extension().map(|e| e.to_str()) != Some(Some("bshot")) {
@@ -210,7 +214,7 @@ pub async fn write_project(path: String, data: ProjectData) -> Result<String, St
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
 
-        let json_str = serde_json::to_string_pretty(&data.metadata)
+        let json_str = serde_json::to_string_pretty(&metadata)
             .map_err(|e| format!("Failed to serialize project metadata: {}", e))?;
         zip_writer.start_file("project.json", options)
             .map_err(|e| format!("Failed to write project.json header: {}", e))?;
@@ -219,7 +223,7 @@ pub async fn write_project(path: String, data: ProjectData) -> Result<String, St
 
         zip_writer.start_file("screenshot.png", options)
             .map_err(|e| format!("Failed to write screenshot.png header: {}", e))?;
-        zip_writer.write_all(&data.screenshot_bytes)
+        zip_writer.write_all(&screenshot_bytes)
             .map_err(|e| format!("Failed to write screenshot.png content: {}", e))?;
 
         zip_writer.finish()
