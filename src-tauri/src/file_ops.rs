@@ -11,6 +11,7 @@ const MAX_FILE_SIZE: usize = 50 * 1024 * 1024;
 // ─── Project Data Structures ───────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CanvasMeta {
     pub original_width: u32,
     pub original_height: u32,
