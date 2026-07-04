@@ -1,8 +1,9 @@
 // File API - TypeScript wrappers for Tauri file operations
 
 import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import type { ExportFormat } from '../stores/export-store';
+import type { ProjectLoadResult, ProjectSaveData } from '../types/project';
 
 /**
  * Normalize Windows extended-length path prefix (\\?\)
@@ -72,4 +73,47 @@ export async function showSaveDialog(
   });
 
   return path;
+}
+
+/**
+ * Read a .bshot project file (ZIP archive)
+ * Returns metadata and raw screenshot bytes from the Rust backend
+ */
+export async function readProject(path: string): Promise<ProjectLoadResult> {
+  return await invoke<ProjectLoadResult>('read_project', { path });
+}
+
+/**
+ * Write a .bshot project file (ZIP archive)
+ * Serializes metadata and screenshot bytes into a ZIP via Rust
+ */
+export async function writeProject(
+  path: string,
+  data: ProjectSaveData
+): Promise<string> {
+  return await invoke<string>('write_project', { path, data });
+}
+
+/**
+ * Delete a file from disk
+ * @param moveToTrash — if true, use system trash; otherwise permanent delete
+ */
+export async function deleteFile(
+  path: string,
+  moveToTrash: boolean
+): Promise<void> {
+  await invoke('delete_file', { path, moveToTrash });
+}
+
+/**
+ * Show native open file dialog filtered to .bshot project files
+ * Returns the selected file path, or null if cancelled
+ */
+export async function showOpenDialog(): Promise<string | null> {
+  const selected = await open({
+    filters: [{ name: 'beautiFULLshot Project', extensions: ['bshot'] }],
+    multiple: false,
+  });
+
+  return selected as string | null;
 }
