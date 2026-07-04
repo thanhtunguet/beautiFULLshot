@@ -3,7 +3,9 @@
 import { useEffect, useCallback } from 'react';
 import { useAnnotationStore } from '../stores/annotation-store';
 import { useSettingsStore } from '../stores/settings-store';
+import { useProjectStore } from '../stores/project-store';
 import { useExport } from './use-export';
+import { projectSaveRef } from './use-file-menu';
 
 /**
  * Parse hotkey string to check if it matches a keyboard event
@@ -69,10 +71,18 @@ export function useKeyboardShortcuts() {
 
       const isMod = e.metaKey || e.ctrlKey;
 
-      // Check custom hotkeys from settings
+      // Cmd+S / custom Save hotkey
+      // The Rust File > Save menu item has NO keyboard accelerator to avoid
+      // double-firing with this browser handler. We are the sole Cmd+S handler.
+      // When a project is open, delegate to use-file-menu.ts's handleSave via
+      // the exported ref. Otherwise, fall back to quickSave (PNG export).
       if (matchesHotkey(e, hotkeys.save)) {
         e.preventDefault();
-        quickSave();
+        if (useProjectStore.getState().isOpen) {
+          projectSaveRef.current?.();
+        } else {
+          quickSave();
+        }
         return;
       }
 

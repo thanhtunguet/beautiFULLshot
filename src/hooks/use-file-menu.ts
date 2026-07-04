@@ -1,6 +1,6 @@
 // useFileMenu — Listens for native File menu events and orchestrates actions
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type React from 'react';
 import { listen } from '@tauri-apps/api/event';
 import type { Event } from '@tauri-apps/api/event';
@@ -30,11 +30,26 @@ interface UseFileMenuOptions {
   >;
 }
 
+/**
+ * Module-level ref to the latest handleSave callback, so keyboard handlers
+ * can invoke project save imperatively when Cmd+S is pressed and a project
+ * is open. Cmd+S was removed from the Rust menu accelerator to avoid
+ * double-firing with the browser-level hotkey handler.
+ */
+export const projectSaveRef: React.MutableRefObject<
+  (() => Promise<void>) | null
+> = { current: null };
+
 export function useFileMenu({
   onDeleteRequest,
   exportSaveAsRef,
 }: UseFileMenuOptions) {
   const projectStore = useProjectStore;
+
+  // Re-entrancy guard: prevent concurrent export operations
+  // (the native save dialog is blocking; a double event delivery could
+  // otherwise open a second dialog after the user cancels the first)
+  const isExportingRef = useRef(false);
 
   // ─── Open ────────────────────────────────────────────────────
   const handleOpen = useCallback(async (_event: Event<unknown>) => {
@@ -104,8 +119,14 @@ export function useFileMenu({
   // ─── Export ──────────────────────────────────────────────────
   const handleExport = useCallback(
     async (_event: Event<unknown>) => {
+      if (isExportingRef.current) return;
       if (exportSaveAsRef.current) {
-        await exportSaveAsRef.current();
+        isExportingRef.current = true;
+        try {
+          await exportSaveAsRef.current();
+        } finally {
+          isExportingRef.current = false;
+        }
       }
     },
     [exportSaveAsRef]
@@ -185,4 +206,8 @@ export function useFileMenu({
       unlisteners.forEach((fn) => fn());
     };
   }, [handleOpen, handleSave, handleExport, handleClose, handleDelete]);
+
+  // Expose save callback for keyboard shortcut handler
+  // (Cmd+S accelerator was removed from Rust menu to avoid double-fire)
+  projectSaveRef.current = () => handleSave({} as Event<unknown>);
 }
