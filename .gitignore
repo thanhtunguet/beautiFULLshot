@@ -25,3 +25,5 @@ dist-ssr
 reports
 .claude
 target/
+tauri.local.conf.json
+.worktrees/
