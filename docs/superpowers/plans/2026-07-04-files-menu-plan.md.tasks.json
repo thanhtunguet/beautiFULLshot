@@ -1,0 +1,74 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-04-files-menu-plan.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Add Rust dependencies (zip, trash)",
+      "status": "pending",
+      "description": "**Goal:** Add `zip` and `trash` crates to the Tauri Cargo.toml for ZIP archive I/O and system trash support.\n\n**Files:**\n- Modify: `src-tauri/Cargo.toml`\n\n**Acceptance Criteria:**\n- [ ] `cargo build` succeeds with new dependencies\n- [ ] `zip` crate available for ZIP archive read/write\n- [ ] `trash` crate available for system trash operations\n\n**Verify:** `cd src-tauri && cargo build 2>&1 | tail -5` → `Finished` with no errors\n\n```json:metadata\n{\"files\": [\"src-tauri/Cargo.toml\"], \"verifyCommand\": \"cd src-tauri && cargo build 2>&1 | tail -5\", \"acceptanceCriteria\": [\"cargo build succeeds\", \"zip crate available\", \"trash crate available\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Create project data types",
+      "status": "pending",
+      "description": "**Goal:** Create TypeScript types matching the `.bshot` project.json schema.\n\n**Files:**\n- Create: `src/types/project.ts`\n\n**Acceptance Criteria:**\n- [ ] All types match the project.json schema from the design spec\n- [ ] Types are exported and importable\n- [ ] Annotation types are compatible with existing `types/annotations.ts`\n\n**Verify:** `npx tsc --noEmit` → no errors\n\n```json:metadata\n{\"files\": [\"src/types/project.ts\"], \"verifyCommand\": \"npx tsc --noEmit\", \"acceptanceCriteria\": [\"Types match project.json schema\", \"Types exported and importable\", \"Compatible with existing annotation types\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Implement Rust project file operations",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Add `ProjectData` structs and `read_project`, `write_project`, `delete_file` Tauri commands in `file_ops.rs`. Register in `lib.rs`.\n\n**Files:**\n- Modify: `src-tauri/src/file_ops.rs` — full rewrite with project structs and commands\n- Modify: `src-tauri/src/lib.rs` — register 3 new commands in invoke_handler\n\n**Acceptance Criteria:**\n- [ ] `ProjectData` and `ProjectMetadata` structs with serde Serialize/Deserialize\n- [ ] `read_project` opens ZIP, reads project.json + screenshot.png, returns ProjectData\n- [ ] `write_project` creates ZIP with project.json + screenshot.png\n- [ ] `delete_file` uses trash crate or fs::remove_file based on flag\n- [ ] All commands registered in lib.rs invoke_handler\n\n**Verify:** `cd src-tauri && cargo build 2>&1 | tail -3` → `Finished`\n\n```json:metadata\n{\"files\": [\"src-tauri/src/file_ops.rs\", \"src-tauri/src/lib.rs\"], \"verifyCommand\": \"cd src-tauri && cargo build 2>&1 | tail -5\", \"acceptanceCriteria\": [\"read_project opens ZIP correctly\", \"write_project creates valid ZIP\", \"delete_file uses trash or permanent delete\", \"commands registered in lib.rs\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Add File submenu to Rust native menu",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "**Goal:** Add a File submenu (before Edit) with Open, Save, Export, Close Screenshot, Delete items. Each emits a Tauri event to the frontend.\n\n**Files:**\n- Modify: `src-tauri/src/lib.rs` — add File SubmenuBuilder, update on_menu_event handler\n\n**Acceptance Criteria:**\n- [ ] File submenu appears before Edit in the macOS menu bar\n- [ ] Open (Cmd+O), Save (Cmd+S), Export (Cmd+Shift+E) have keyboard accelerators\n- [ ] Close Screenshot and Delete have no accelerators\n- [ ] Each item emits: menu-file-open, menu-file-save, menu-file-export, menu-file-close, menu-file-delete\n\n**Verify:** `cd src-tauri && cargo build 2>&1 | tail -3` → `Finished`\n\n```json:metadata\n{\"files\": [\"src-tauri/src/lib.rs\"], \"verifyCommand\": \"cd src-tauri && cargo build 2>&1 | tail -5\", \"acceptanceCriteria\": [\"File menu appears before Edit\", \"Cmd+O/S/Shift+E accelerators work\", \"Events emit correctly to frontend\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Create project-store.ts with dirty tracking",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Create a Zustand store that manages project state — file path, dirty flag, open/close — and watches canvas/annotation/background stores for changes.\n\n**Files:**\n- Create: `src/stores/project-store.ts`\n- Create: `src/stores/__tests__/project-store.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Tracks `filePath`, `isDirty`, `isOpen`\n- [ ] `markDirty()` called automatically when canvas, annotation, or background stores change\n- [ ] `markClean()` resets dirty flag (called after save/open)\n- [ ] `openProject(path)` sets filePath, marks clean, sets isOpen\n- [ ] `closeProject()` cleans up and sets isOpen to false\n- [ ] Dirty tracking stops when no project is open\n\n**Verify:** `npx vitest run src/stores/__tests__/project-store.test.ts` → all 5 tests pass\n\n```json:metadata\n{\"files\": [\"src/stores/project-store.ts\", \"src/stores/__tests__/project-store.test.ts\"], \"verifyCommand\": \"npx vitest run src/stores/__tests__/project-store.test.ts\", \"acceptanceCriteria\": [\"Dirty flag tracks canvas/annotation/background changes\", \"openProject/setFilePath/closeProject work correctly\", \"State transitions: open → dirty → clean → closed\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Extend file-api.ts with project operations",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Add TypeScript wrappers for new Rust project commands: `readProject`, `writeProject`, `deleteFile`, and a native open dialog helper `showOpenDialog`.\n\n**Files:**\n- Modify: `src/utils/file-api.ts` — add 4 new functions\n\n**Acceptance Criteria:**\n- [ ] `readProject(path)` invokes `read_project`, returns `ProjectLoadResult`\n- [ ] `writeProject(path, data)` invokes `write_project`\n- [ ] `deleteFile(path, moveToTrash)` invokes `delete_file`\n- [ ] `showOpenDialog()` uses `@tauri-apps/plugin-dialog` `open()` with `.bshot` filter\n- [ ] Existing exports unchanged\n\n**Verify:** `npx tsc --noEmit` → no errors\n\n```json:metadata\n{\"files\": [\"src/utils/file-api.ts\"], \"verifyCommand\": \"npx tsc --noEmit\", \"acceptanceCriteria\": [\"readProject invokes Rust command correctly\", \"writeProject invokes Rust command correctly\", \"deleteFile invokes Rust command correctly\", \"showOpenDialog filters to .bshot\", \"Existing functions unchanged\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Create use-file-menu.ts hook",
+      "status": "pending",
+      "blockedBy": [5, 6],
+      "description": "**Goal:** Create a hook that listens for the five Tauri File menu events and orchestrates the corresponding actions — open project, save, export, close, delete.\n\n**Files:**\n- Create: `src/utils/project-io.ts` — shared project I/O utilities\n- Create: `src/hooks/use-file-menu.ts` — menu event handler hook\n\n**Acceptance Criteria:**\n- [ ] Listens for menu-file-open, menu-file-save, menu-file-export, menu-file-close, menu-file-delete\n- [ ] Open: native dialog → readProject → restoreProjectFromData → all stores restored\n- [ ] Save: buildProjectMetadata → writeProject (or save dialog if new)\n- [ ] Export: delegates to useExport().saveAs() via ref\n- [ ] Close: auto-saves if dirty + filePath → clears all stores\n- [ ] Delete: opens DeleteConfirmModal via callback\n- [ ] Cleans up event listeners on unmount\n\n**Verify:** `npx tsc --noEmit` → no errors\n\n```json:metadata\n{\"files\": [\"src/hooks/use-file-menu.ts\", \"src/utils/project-io.ts\"], \"verifyCommand\": \"npx tsc --noEmit\", \"acceptanceCriteria\": [\"All 5 menu events handled\", \"Open restores all stores\", \"Save serializes current state\", \"Export delegates to saveAs\", \"Close auto-saves then clears\", \"Delete opens modal\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Create delete-confirm-modal.tsx",
+      "status": "pending",
+      "blockedBy": [5, 6],
+      "description": "**Goal:** Create a glass-styled confirmation modal for project deletion with three options: Move to Trash, Delete Permanently, Cancel.\n\n**Files:**\n- Create: `src/components/layout/delete-confirm-modal.tsx`\n\n**Acceptance Criteria:**\n- [ ] Three buttons: Move to Trash (primary), Delete Permanently (danger/red), Cancel\n- [ ] Displays the project filename being deleted\n- [ ] Move to Trash calls deleteFile(path, true) → closes project → toast\n- [ ] Delete Permanently calls deleteFile(path, false) → closes project → toast\n- [ ] Cancel closes modal without action\n- [ ] Follows existing glass-styled modal patterns (About, Settings)\n\n**Verify:** `npx tsc --noEmit` → no errors\n\n```json:metadata\n{\"files\": [\"src/components/layout/delete-confirm-modal.tsx\"], \"verifyCommand\": \"npx tsc --noEmit\", \"acceptanceCriteria\": [\"Three buttons: Trash, Permanent Delete, Cancel\", \"Displays filename\", \"Trash uses system trash crate\", \"Permanent uses fs::remove_file\", \"Matches glass modal styling\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Add .bshot drag-drop to EditorLayout",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "**Goal:** Extend EditorLayout's drop handler to recognize `.bshot` files and open them as projects.\n\n**Files:**\n- Modify: `src/components/layout/editor-layout.tsx` — add .bshot check before image check in handleDrop\n\n**Acceptance Criteria:**\n- [ ] `.bshot` files dropped open as projects (via openProjectFile from project-io.ts)\n- [ ] Non-`.bshot` image files continue to work as before\n- [ ] Both macOS Finder drag and other drag sources work\n\n**Verify:** `npx tsc --noEmit` → no errors\n\n```json:metadata\n{\"files\": [\"src/components/layout/editor-layout.tsx\"], \"verifyCommand\": \"npx tsc --noEmit\", \"acceptanceCriteria\": [\".bshot files open as projects on drop\", \"Non-.bshot images work as before\", \"Works with Finder and browser drag sources\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Wire file menu into App.tsx",
+      "status": "pending",
+      "blockedBy": [7, 8],
+      "description": "**Goal:** Mount the useFileMenu hook and DeleteConfirmModal in the App component so the full file menu flow works end-to-end.\n\n**Files:**\n- Modify: `src/App.tsx` — add hook call, modal state, modal render\n\n**Acceptance Criteria:**\n- [ ] useFileMenu() is called in App component with onDeleteRequest and exportSaveAsRef\n- [ ] A ref tracking useExport().saveAs is passed for the export menu item\n- [ ] DeleteConfirmModal is rendered alongside ToastContainer and UpdateModal\n- [ ] Full E2E: Cmd+O opens dialog, Cmd+S saves, Cmd+Shift+E exports, Close clears, Delete shows modal\n\n**Verify:** `npx tsc --noEmit` → no errors, then manual smoke test with `npm run tauri dev`\n\n```json:metadata\n{\"files\": [\"src/App.tsx\"], \"verifyCommand\": \"npx tsc --noEmit && echo 'Manual test: npm run tauri dev'\", \"acceptanceCriteria\": [\"useFileMenu called in App\", \"DeleteConfirmModal renders\", \"Cmd+O/N/S/Shift+E all work\", \"Delete shows trash modal\", \"Drag-drop .bshot works\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-07-04T00:00:00Z"
+}
