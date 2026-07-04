@@ -51,6 +51,7 @@ export function useFileMenu({
   // Re-entrancy guards: native dialogs are blocking; double event
   // delivery would open a second dialog after the user cancels the first
   const isBusyRef = useRef(false);
+  const isSavingRef = useRef(false);
 
   // ─── Open ────────────────────────────────────────────────────
   const handleOpen = useCallback(async (_event: Event<unknown>) => {
@@ -75,6 +76,8 @@ export function useFileMenu({
   // ─── Save ────────────────────────────────────────────────────
   const handleSave = useCallback(
     async (_event: Event<unknown>) => {
+      if (isSavingRef.current) return;
+      isSavingRef.current = true;
       try {
         const state = projectStore.getState();
         const canvas = useCanvasStore.getState();
@@ -126,6 +129,8 @@ export function useFileMenu({
         logError('useFileMenu:save', e);
         const message = e instanceof Error ? e.message : String(e);
         toast.error('Save Failed', message);
+      } finally {
+        isSavingRef.current = false;
       }
     },
     [projectStore]

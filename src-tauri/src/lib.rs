@@ -75,6 +75,7 @@ pub fn run() {
                     .accelerator("CmdOrCtrl+O")
                     .build(handle)?;
                 let file_save = MenuItemBuilder::with_id("file_save", "Save")
+                    .accelerator("CmdOrCtrl+S")
                     .build(handle)?;
                 let file_export = MenuItemBuilder::with_id("file_export", "Export...")
                     .accelerator("CmdOrCtrl+Shift+E")
