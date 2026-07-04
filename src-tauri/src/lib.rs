@@ -192,6 +192,7 @@ pub fn run() {
             file_ops::read_project,
             file_ops::write_project,
             file_ops::delete_file,
+            file_ops::read_binary_file,
             shortcuts::update_shortcuts,
             overlay::create_overlay_window,
             overlay::close_overlay_window,

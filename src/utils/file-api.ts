@@ -106,14 +106,26 @@ export async function deleteFile(
 }
 
 /**
- * Show native open file dialog filtered to .bshot project files
+ * Show native open file dialog — accepts both .bshot projects and image files
  * Returns the selected file path, or null if cancelled
  */
 export async function showOpenDialog(): Promise<string | null> {
   const selected = await open({
-    filters: [{ name: 'beautiFULLshot Project', extensions: ['bshot'] }],
+    filters: [
+      { name: 'All Supported', extensions: ['bshot', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
+      { name: 'beautiFULLshot Project', extensions: ['bshot'] },
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
+    ],
     multiple: false,
   });
 
   return selected as string | null;
+}
+
+/**
+ * Read a binary file from disk (used for opening image files via File > Open)
+ */
+export async function readBinaryFile(path: string): Promise<Uint8Array> {
+  const bytes: number[] = await invoke<number[]>('read_binary_file', { path });
+  return new Uint8Array(bytes);
 }

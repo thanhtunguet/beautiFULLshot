@@ -9,11 +9,70 @@ import { useCropStore } from '../stores/crop-store';
 import { useHistoryStore } from '../stores/history-store';
 import { useProjectStore } from '../stores/project-store';
 import { toast } from '../stores/toast-store';
-import { readProject, normalizePath } from './file-api';
+import { readProject, readBinaryFile, normalizePath } from './file-api';
 import { logError } from './logger';
 import { GRADIENT_PRESETS } from '../data/gradients';
 import { WALLPAPER_PRESETS } from '../data/wallpapers';
 import type { ProjectMetadata } from '../types/project';
+
+/**
+ * Open an image file as a new screenshot via File > Open.
+ * Full flow: read bytes → get dimensions → clear state → load onto canvas.
+ * Returns true on success.
+ */
+export async function openImageFile(path: string): Promise<boolean> {
+  try {
+    const bytes = await readBinaryFile(path);
+
+    // Get image dimensions
+    const { width, height } = await new Promise<{ width: number; height: number }>(
+      (resolve, reject) => {
+        const blob = new Blob([bytes], { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve({ width: img.width, height: img.height });
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to load image'));
+        };
+        img.src = url;
+      }
+    );
+
+    // Clear existing project state
+    const canvasStore = useCanvasStore.getState();
+    const annotationStore = useAnnotationStore.getState();
+    const historyStore = useHistoryStore.getState();
+    const cropStore = useCropStore.getState();
+
+    canvasStore.clearCanvas();
+    annotationStore.clearAnnotations();
+    historyStore.clear();
+    cropStore.clearCrop();
+
+    // Close any open project (this is a new image, not a .bshot project)
+    useProjectStore.getState().closeProject();
+
+    // Load image onto canvas
+    canvasStore.setImageFromBytes(bytes, width, height);
+    setTimeout(() => canvasStore.fitToView(), 100);
+
+    const displayPath = normalizePath(path);
+    toast.success(
+      'Opened',
+      `Image loaded from ${displayPath.split(/[\\/]/).pop()}`
+    );
+    return true;
+  } catch (e) {
+    logError('openImageFile', e);
+    const message = e instanceof Error ? e.message : String(e);
+    toast.error('Open Failed', message);
+    return false;
+  }
+}
 
 /**
  * Restore all stores from loaded project data.

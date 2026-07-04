@@ -18,6 +18,7 @@ import {
 } from '../utils/file-api';
 import {
   openProjectFile,
+  openImageFile,
   buildProjectMetadata,
 } from '../utils/project-io';
 import type { ProjectSaveData } from '../types/project';
@@ -57,7 +58,14 @@ export function useFileMenu({
     try {
       const path = await showOpenDialog();
       if (!path) return;
-      await openProjectFile(path);
+
+      // Route by file extension: .bshot → project, image → load as screenshot
+      const ext = path.split('.').pop()?.toLowerCase();
+      if (ext === 'bshot') {
+        await openProjectFile(path);
+      } else {
+        await openImageFile(path);
+      }
     } finally {
       isBusyRef.current = false;
     }

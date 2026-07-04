@@ -242,6 +242,23 @@ pub async fn write_project(path: String, data: ProjectData) -> Result<String, St
     Ok(canonical_path.to_string_lossy().to_string())
 }
 
+/// Read a binary file from disk (used for opening image files via File > Open)
+#[tauri::command]
+pub async fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
+    let file_bytes = fs::read(&path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    if file_bytes.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File size ({} MB) exceeds maximum allowed ({} MB)",
+            file_bytes.len() / (1024 * 1024),
+            MAX_FILE_SIZE / (1024 * 1024)
+        ));
+    }
+
+    Ok(file_bytes)
+}
+
 /// Delete a file — move to system trash or permanently delete
 #[tauri::command]
 pub async fn delete_file(path: String, move_to_trash: bool) -> Result<(), String> {
