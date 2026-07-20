@@ -2,7 +2,7 @@
 // Checks permissions on startup and blocks until both Screen Recording
 // and Accessibility permissions are granted (macOS only)
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { EditorLayout } from "./components/layout/editor-layout";
@@ -11,6 +11,9 @@ import { PermissionRequired } from "./components/permission-required";
 import { UpdateModal } from "./components/update-modal";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useHotkeys } from "./hooks/use-hotkeys";
+import { useFileMenu } from "./hooks/use-file-menu";
+import { DeleteConfirmModal } from "./components/layout/delete-confirm-modal";
+import { useExport } from "./hooks/use-export";
 import { useSyncShortcuts } from "./hooks/use-sync-shortcuts";
 import { useSettingsStore } from "./stores/settings-store";
 import { useToastStore } from "./stores/toast-store";
@@ -76,6 +79,20 @@ function App() {
   // Initialize global hotkeys listener (system-wide from Tauri)
   useHotkeys();
 
+  // File menu: export integration (needs a ref to saveAs)
+  const { saveAs } = useExport();
+  const exportSaveAsRef = useRef(saveAs);
+  exportSaveAsRef.current = saveAs;
+
+  // Delete confirmation modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // Wire up the File menu
+  useFileMenu({
+    onDeleteRequest: () => setIsDeleteModalOpen(true),
+    exportSaveAsRef,
+  });
+
   // Apply dark mode class to document
   useEffect(() => {
     const isDark = shouldUseDarkMode(theme);
@@ -129,6 +146,10 @@ function App() {
       <EditorLayout />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <UpdateModal />
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+      />
     </>
   );
 }
