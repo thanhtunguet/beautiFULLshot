@@ -11,6 +11,8 @@ import { useUIStore } from '../../stores/ui-store';
 import { useCanvasStore } from '../../stores/canvas-store';
 import { useCropStore } from '../../stores/crop-store';
 import { logError } from '../../utils/logger';
+import { openProjectFile } from '../../utils/project-io';
+import { toast } from '../../stores/toast-store';
 
 // Helper: Load image and get dimensions
 function loadImageFromBytes(bytes: Uint8Array): Promise<{ width: number; height: number }> {
@@ -118,9 +120,22 @@ export function EditorLayout() {
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         const file = files[0];
+        const fileName = file.name || '';
+
+        // Check if it's a .bshot project file first
+        if (fileName.toLowerCase().endsWith('.bshot')) {
+          const filePath = (file as any).path;
+          if (filePath) {
+            await openProjectFile(filePath);
+          } else {
+            toast.error('Open Failed', 'Could not determine file path. Use File > Open instead.');
+          }
+          return;
+        }
+
         // Check MIME type or file extension (macOS Finder may not set MIME)
         const isImage = file.type.startsWith('image/') ||
-          /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i.test(file.name);
+          /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i.test(fileName);
         if (isImage) {
           await handleImageFile(file);
         }
