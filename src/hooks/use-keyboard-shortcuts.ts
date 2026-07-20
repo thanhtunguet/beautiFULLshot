@@ -55,7 +55,7 @@ function matchesHotkey(e: KeyboardEvent, hotkey: string): boolean {
 export function useKeyboardShortcuts() {
   const { selectedId, deleteSelected, duplicateSelected, setSelected, setTool, undo, redo } = useAnnotationStore();
   const { hotkeys } = useSettingsStore();
-  const { quickSave, copyToClipboard } = useExport();
+  const { copyToClipboard } = useExport();
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -69,12 +69,9 @@ export function useKeyboardShortcuts() {
 
       const isMod = e.metaKey || e.ctrlKey;
 
-      // Check custom hotkeys from settings
-      if (matchesHotkey(e, hotkeys.save)) {
-        e.preventDefault();
-        quickSave();
-        return;
-      }
+      // Cmd+S is handled by the Rust File > Save menu accelerator
+      // which fires menu-file-save → use-file-menu.ts handleSave.
+      // The isSavingRef guard there prevents double-firing.
 
       if (matchesHotkey(e, hotkeys.copy)) {
         e.preventDefault();
@@ -155,7 +152,7 @@ export function useKeyboardShortcuts() {
           break;
       }
     },
-    [selectedId, deleteSelected, duplicateSelected, setSelected, setTool, quickSave, copyToClipboard, undo, redo, hotkeys]
+    [selectedId, deleteSelected, duplicateSelected, setSelected, setTool, copyToClipboard, undo, redo, hotkeys]
   );
 
   useEffect(() => {
