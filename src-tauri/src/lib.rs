@@ -4,12 +4,14 @@
 use std::sync::atomic::AtomicBool;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
-use tauri::WindowEvent;
+use tauri::{Emitter, WindowEvent};
 #[cfg(target_os = "macos")]
 use tauri::{Manager, RunEvent};
 
 #[cfg(target_os = "macos")]
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 
 /// Global flag to track if app should actually quit (from tray menu)
 /// vs just hide to tray (from Cmd+Q or window close)
@@ -61,13 +63,44 @@ pub fn run() {
 
                 // Create app submenu (first menu on macOS)
                 let app_submenu = SubmenuBuilder::new(handle, "beautiFULLshot")
-                    .item(&PredefinedMenuItem::about(handle, Some("About beautiFULLshot"), Some(about_metadata))?)
+                    .item(&PredefinedMenuItem::about(
+                        handle,
+                        Some("About beautiFULLshot"),
+                        Some(about_metadata),
+                    )?)
                     .separator()
                     .item(&hide_item)
                     .separator()
                     .item(&PredefinedMenuItem::hide(handle, Some("Hide"))?)
-                    .item(&PredefinedMenuItem::hide_others(handle, Some("Hide Others"))?)
+                    .item(&PredefinedMenuItem::hide_others(
+                        handle,
+                        Some("Hide Others"),
+                    )?)
                     .item(&PredefinedMenuItem::show_all(handle, Some("Show All"))?)
+                    .build()?;
+
+                // Create File submenu
+                let file_open = MenuItemBuilder::with_id("file_open", "Open...")
+                    .accelerator("CmdOrCtrl+O")
+                    .build(handle)?;
+                let file_save = MenuItemBuilder::with_id("file_save", "Save")
+                    .accelerator("CmdOrCtrl+S")
+                    .build(handle)?;
+                let file_export = MenuItemBuilder::with_id("file_export", "Export...")
+                    .accelerator("CmdOrCtrl+Shift+E")
+                    .build(handle)?;
+                let file_close =
+                    MenuItemBuilder::with_id("file_close", "Close Project").build(handle)?;
+                let file_delete =
+                    MenuItemBuilder::with_id("file_delete", "Delete Project").build(handle)?;
+
+                let file_submenu = SubmenuBuilder::new(handle, "File")
+                    .item(&file_open)
+                    .item(&file_save)
+                    .item(&file_export)
+                    .separator()
+                    .item(&file_close)
+                    .item(&file_delete)
                     .build()?;
 
                 // Create Edit submenu for standard text editing shortcuts
@@ -92,6 +125,7 @@ pub fn run() {
                 // Build and set the menu
                 let menu = MenuBuilder::new(handle)
                     .item(&app_submenu)
+                    .item(&file_submenu)
                     .item(&edit_submenu)
                     .item(&window_submenu)
                     .build()?;
@@ -101,13 +135,24 @@ pub fn run() {
                 // Handle custom menu events
                 let handle_clone = handle.clone();
                 app.on_menu_event(move |_app, event| {
-                    if event.id().as_ref() == "hide_to_tray" {
-                        // Hide window instead of quitting
-                        if let Some(window) = handle_clone.get_webview_window("main") {
-                            let _ = window.hide();
+                    let event_id = event.id().as_ref();
+                    match event_id {
+                        "hide_to_tray" => {
+                            if let Some(window) = handle_clone.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                            let _ = handle_clone
+                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
                         }
-                        // Hide from dock
-                        let _ = handle_clone.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        // File menu events — forward to frontend
+                        "file_open" | "file_save" | "file_export" | "file_close"
+                        | "file_delete" => {
+                            if let Some(window) = handle_clone.get_webview_window("main") {
+                                let frontend_event = format!("menu-{}", event_id.replace('_', "-"));
+                                let _ = window.emit(&frontend_event, ());
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
@@ -153,8 +198,11 @@ pub fn run() {
             permissions::open_screen_recording_settings,
             permissions::open_accessibility_settings,
             file_ops::save_file,
-            file_ops::get_pictures_dir,
-            file_ops::get_desktop_dir,
+            file_ops::get_project_dir,
+            file_ops::read_project,
+            file_ops::write_project,
+            file_ops::delete_file,
+            file_ops::read_binary_file,
             shortcuts::update_shortcuts,
             overlay::create_overlay_window,
             overlay::close_overlay_window,
