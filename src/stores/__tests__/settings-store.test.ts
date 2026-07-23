@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useSettingsStore, isValidHotkey } from '../settings-store';
+import { useSettingsStore, isValidHotkey, migrateSettings } from '../settings-store';
 
 describe('Settings Store', () => {
   beforeEach(() => {
@@ -213,5 +213,43 @@ describe('isValidHotkey', () => {
   it('should be case-insensitive for validation', () => {
     expect(isValidHotkey('ctrl+shift+c')).toBe(true);
     expect(isValidHotkey('CTRL+SHIFT+C')).toBe(true);
+  });
+});
+
+describe('migrateSettings', () => {
+  it('remaps legacy "pictures" saveLocation to "default"', () => {
+    const migrated = migrateSettings({ saveLocation: 'pictures' }, 0) as {
+      saveLocation: string;
+    };
+    expect(migrated.saveLocation).toBe('default');
+  });
+
+  it('remaps legacy "desktop" saveLocation to "default"', () => {
+    const migrated = migrateSettings({ saveLocation: 'desktop' }, 0) as {
+      saveLocation: string;
+    };
+    expect(migrated.saveLocation).toBe('default');
+  });
+
+  it('leaves "custom" saveLocation untouched', () => {
+    const migrated = migrateSettings(
+      { saveLocation: 'custom', customSavePath: '/tmp' },
+      0
+    ) as { saveLocation: string; customSavePath: string };
+    expect(migrated.saveLocation).toBe('custom');
+    expect(migrated.customSavePath).toBe('/tmp');
+  });
+
+  it('does not touch state already at or above v1', () => {
+    const migrated = migrateSettings({ saveLocation: 'pictures' }, 1) as {
+      saveLocation: string;
+    };
+    // Already migrated shape — a stray legacy value is left as-is rather than
+    // re-migrated, matching zustand's version-gated migration contract.
+    expect(migrated.saveLocation).toBe('pictures');
+  });
+
+  it('handles undefined persisted state', () => {
+    expect(migrateSettings(undefined, 0)).toBeUndefined();
   });
 });

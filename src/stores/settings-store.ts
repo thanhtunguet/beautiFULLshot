@@ -88,6 +88,27 @@ const DEFAULT_HOTKEYS: HotkeyConfig = {
   copy: 'CommandOrControl+C',
 };
 
+/**
+ * Persisted-state migration for `beautyshot-settings`. v1 drops the legacy
+ * `SaveLocation` values `'pictures'`/`'desktop'` (save location was unified to
+ * a single project directory) — a persisted state carrying either would
+ * otherwise survive the upgrade as a stale value matching neither radio in the
+ * settings modal. Exported for unit testing.
+ */
+export function migrateSettings(
+  persistedState: unknown,
+  version: number
+): unknown {
+  const state = persistedState as Partial<SettingsState> | undefined;
+  if (state && version < 1) {
+    const legacy = state.saveLocation as string | undefined;
+    if (legacy === 'pictures' || legacy === 'desktop') {
+      state.saveLocation = 'default';
+    }
+  }
+  return state;
+}
+
 const DEFAULT_STATE = {
   hotkeys: DEFAULT_HOTKEYS,
   startMinimized: false,
@@ -132,6 +153,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'beautyshot-settings',
+      // Bumped from the implicit v0 shape now that `SaveLocation` no longer
+      // includes the legacy `'pictures'`/`'desktop'` values (save location was
+      // unified to a single project directory). Without this, a persisted
+      // `saveLocation: 'pictures'` would survive the upgrade as a stale value
+      // matching neither radio in the settings modal.
+      version: 1,
+      migrate: (persistedState, version) =>
+        migrateSettings(persistedState, version) as SettingsState,
     }
   )
 );
