@@ -8,15 +8,24 @@ import { useAnnotationStore } from '../../stores/annotation-store';
 import { useHistoryStore } from '../../stores/history-store';
 import { useCropStore } from '../../stores/crop-store';
 import { toast } from '../../stores/toast-store';
-import { deleteFile, extractFilename } from '../../utils/file-api';
+import { deleteFile, extractFilename, clearActiveProject } from '../../utils/file-api';
 import { logError } from '../../utils/logger';
 
 interface Props {
-  isOpen: boolean;
+  /**
+   * Path snapshot captured at the moment deletion was requested (see
+   * App.tsx). Passing this explicitly — rather than reading
+   * useProjectStore.getState().filePath at render time — is what prevents
+   * the identity race: if another project is opened while this modal is
+   * still showing, `filePath` here keeps pointing at the project the user
+   * actually asked to delete.
+   */
+  filePath: string | null;
   onClose: () => void;
 }
 
-export function DeleteConfirmModal({ isOpen, onClose }: Props) {
+export function DeleteConfirmModal({ filePath, onClose }: Props) {
+  const isOpen = filePath !== null;
   const modalRef = useRef<HTMLDivElement>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -30,7 +39,6 @@ export function DeleteConfirmModal({ isOpen, onClose }: Props) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, isDeleting]);
 
-  const filePath = useProjectStore.getState().filePath;
   const filename = filePath ? extractFilename(filePath) : 'Unknown project';
 
   const handleDelete = useCallback(async (moveToTrash: boolean) => {
@@ -40,12 +48,19 @@ export function DeleteConfirmModal({ isOpen, onClose }: Props) {
     try {
       await deleteFile(filePath, moveToTrash);
 
-      // Clear all project state
-      useCanvasStore.getState().clearCanvas();
-      useAnnotationStore.getState().clearAnnotations();
-      useHistoryStore.getState().clear();
-      useCropStore.getState().clearCrop();
-      useProjectStore.getState().closeProject();
+      // Only clear in-memory project state if the store's current project
+      // is still the one that was just deleted — the shared transition
+      // lock (project-io.ts) prevents another project from being opened
+      // while this modal is up, but this check keeps the invariant correct
+      // regardless.
+      if (useProjectStore.getState().filePath === filePath) {
+        useCanvasStore.getState().clearCanvas();
+        useAnnotationStore.getState().clearAnnotations();
+        useHistoryStore.getState().clear();
+        useCropStore.getState().clearCrop();
+        useProjectStore.getState().closeProject();
+        await clearActiveProject().catch(() => {});
+      }
 
       toast.success(
         moveToTrash ? 'Moved to Trash' : 'Deleted',

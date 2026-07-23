@@ -13,7 +13,8 @@ Cross-platform screenshot beautification app built with Tauri v2 + React + TypeS
 - **Image Styling**: Adjustable blur, shadow, corner radius, padding, and border with color picker
 - **Crop Tool**: 8 aspect ratio presets (1:1, 4:3, 16:9, etc.) with freeform option
 - **Export Options**: PNG/JPEG with quality control, 1x/2x/3x resolution, clipboard copy (Cmd/Ctrl+C)
-- **Image Input**: Drag & drop images, paste from clipboard, or capture screenshots
+- **Project Files (.bshot)**: Save/open a fully-editable project (screenshot, background, annotations, crop, export settings) as a single `.bshot` file; unsaved-changes protection on Close/Open/Capture/Paste/Drop; Move to Trash or permanently delete from the app
+- **Image Input**: Drag & drop images or `.bshot` projects, paste from clipboard, or capture screenshots
 - **Native Integration**: System tray, global hotkeys, notifications
 - **Auto-Update**: Checks for updates on startup and installs automatically
 - **Cross-Platform**: Windows, macOS, Linux (X11)

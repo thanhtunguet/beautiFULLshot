@@ -63,6 +63,9 @@ export const useExportStore = create<ExportState>()(
     }),
     {
       name: 'beautyshot-export-settings',
+      // See background-store.ts's persist config for why this exists.
+      version: 1,
+      migrate: (persistedState) => persistedState,
       // Exclude transient state from persistence
       partialize: (state) => ({
         format: state.format,

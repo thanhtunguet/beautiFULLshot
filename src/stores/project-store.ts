@@ -5,6 +5,8 @@ import { create } from 'zustand';
 import { useCanvasStore } from './canvas-store';
 import { useAnnotationStore } from './annotation-store';
 import { useBackgroundStore } from './background-store';
+import { useExportStore } from './export-store';
+import { useCropStore } from './crop-store';
 
 export interface ProjectState {
   filePath: string | null;
@@ -60,6 +62,10 @@ function setupDirtyTracking() {
   let prevBorderOpacity = useBackgroundStore.getState().borderOpacity;
   let prevGradientId = useBackgroundStore.getState().gradient?.id ?? null;
   let prevSolidColor = useBackgroundStore.getState().solidColor;
+  let prevWallpaperId = useBackgroundStore.getState().wallpaper?.id ?? null;
+  let prevCustomImageUrl = useBackgroundStore.getState().customImageUrl;
+  let prevSelectedImageId = useBackgroundStore.getState().selectedImageId;
+  let prevAutoColor = useBackgroundStore.getState().autoColor;
 
   useBackgroundStore.subscribe((state) => {
     if (
@@ -72,7 +78,11 @@ function setupDirtyTracking() {
       state.borderColor !== prevBorderColor ||
       state.borderOpacity !== prevBorderOpacity ||
       state.gradient?.id !== prevGradientId ||
-      state.solidColor !== prevSolidColor
+      state.solidColor !== prevSolidColor ||
+      state.wallpaper?.id !== prevWallpaperId ||
+      state.customImageUrl !== prevCustomImageUrl ||
+      state.selectedImageId !== prevSelectedImageId ||
+      state.autoColor !== prevAutoColor
     ) {
       prevBgType = state.type;
       prevBlur = state.blurAmount;
@@ -84,6 +94,43 @@ function setupDirtyTracking() {
       prevBorderOpacity = state.borderOpacity;
       prevGradientId = state.gradient?.id ?? null;
       prevSolidColor = state.solidColor;
+      prevWallpaperId = state.wallpaper?.id ?? null;
+      prevCustomImageUrl = state.customImageUrl;
+      prevSelectedImageId = state.selectedImageId;
+      prevAutoColor = state.autoColor;
+      markDirty();
+    }
+  });
+
+  // Watch crop store for the committed aspect ratio (persisted in the
+  // project file's `crop` field)
+  let prevAspectRatio = useCropStore.getState().aspectRatio;
+  useCropStore.subscribe((state) => {
+    if (state.aspectRatio !== prevAspectRatio) {
+      prevAspectRatio = state.aspectRatio;
+      markDirty();
+    }
+  });
+
+  // Watch export settings — these are part of the persisted project file
+  // (ProjectMetadata.exportSettings) but were not tracked before, so
+  // changing them didn't mark the project dirty.
+  let prevFormat = useExportStore.getState().format;
+  let prevQuality = useExportStore.getState().quality;
+  let prevPixelRatio = useExportStore.getState().pixelRatio;
+  let prevOutputAspectRatio = useExportStore.getState().outputAspectRatio;
+
+  useExportStore.subscribe((state) => {
+    if (
+      state.format !== prevFormat ||
+      state.quality !== prevQuality ||
+      state.pixelRatio !== prevPixelRatio ||
+      state.outputAspectRatio !== prevOutputAspectRatio
+    ) {
+      prevFormat = state.format;
+      prevQuality = state.quality;
+      prevPixelRatio = state.pixelRatio;
+      prevOutputAspectRatio = state.outputAspectRatio;
       markDirty();
     }
   });

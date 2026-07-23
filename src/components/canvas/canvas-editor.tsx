@@ -131,7 +131,16 @@ export function CanvasEditor() {
     return false;
   }, []);
 
-  // Zoom with pinch gesture (ctrlKey) / pan with two-finger scroll
+  // Zoom with pinch gesture (ctrlKey) or a physical mouse wheel / pan with
+  // trackpad two-finger scroll.
+  //
+  // Trackpad pinch-to-zoom reports ctrlKey=true. Trackpad two-finger pan
+  // reports pixel-precision deltas (deltaMode === WheelEvent.DOM_DELTA_PIXEL,
+  // i.e. 0). A physical mouse wheel reports line/page-precision deltas
+  // (deltaMode 1 or 2) with no horizontal component and no ctrlKey — without
+  // this deltaMode check, plain mouse-wheel scroll would fall into the pan
+  // branch below (via deltaY) instead of zooming as it did before two-finger
+  // pan support was added.
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
@@ -139,9 +148,10 @@ export function CanvasEditor() {
       const stage = stageRef.current;
       if (!stage) return;
 
-      const isPinch = e.evt.ctrlKey;
+      const isTrackpadPan = !e.evt.ctrlKey && e.evt.deltaMode === 0;
+      const shouldZoom = !isTrackpadPan;
 
-      if (isPinch) {
+      if (shouldZoom) {
         const pointer = stage.getPointerPosition();
         if (!pointer) return;
 

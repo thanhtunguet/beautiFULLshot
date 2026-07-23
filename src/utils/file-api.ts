@@ -1,7 +1,7 @@
 // File API - TypeScript wrappers for Tauri file operations
 
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { save } from '@tauri-apps/plugin-dialog';
 import type { ProjectLoadResult, ProjectSaveData } from '../types/project';
 import type { ExportFormat } from '../stores/export-store';
 
@@ -72,16 +72,9 @@ export async function showSaveDialog(
 }
 
 /**
- * Read a .bshot project file (ZIP archive)
- * Returns metadata and raw screenshot bytes from the Rust backend
- */
-export async function readProject(path: string): Promise<ProjectLoadResult> {
-  return await invoke<ProjectLoadResult>('read_project', { path });
-}
-
-/**
- * Write a .bshot project file (ZIP archive)
- * Serializes metadata and screenshot bytes into a ZIP via Rust
+ * Write a .bshot project file (ZIP archive), atomically.
+ * Serializes metadata, screenshot bytes, and (if present) a custom
+ * background image into a ZIP via Rust.
  */
 export async function writeProject(
   path: string,
@@ -91,11 +84,14 @@ export async function writeProject(
     path,
     metadata: data.metadata,
     screenshotBytes: data.screenshotBytes,
+    backgroundImageBytes: data.backgroundImageBytes ?? null,
   });
 }
 
 /**
- * Delete a file from disk
+ * Delete a file from disk.
+ * Rust restricts this to the currently-open `.bshot` project path — it is
+ * not a general-purpose delete primitive.
  * @param moveToTrash — if true, use system trash; otherwise permanent delete
  */
 export async function deleteFile(
@@ -105,30 +101,43 @@ export async function deleteFile(
   await invoke('delete_file', { path, moveToTrash });
 }
 
-/**
- * Show native open file dialog — accepts both .bshot projects and image files
- * Defaults to the beautiFULLshot project directory (~/Pictures/beautiFULLshot)
- * Returns the selected file path, or null if cancelled
- */
-export async function showOpenDialog(): Promise<string | null> {
-  const projectDir = await getProjectDir();
-  const selected = await open({
-    defaultPath: projectDir,
-    filters: [
-      { name: 'All Supported', extensions: ['bshot', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
-      { name: 'beautiFULLshot Project', extensions: ['bshot'] },
-      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
-    ],
-    multiple: false,
-  });
+/** Tagged result of the native Open dialog (project, image, or cancelled). */
+export type OpenPickResult =
+  | { kind: 'project'; path: string; data: ProjectLoadResult }
+  | { kind: 'image'; path: string; bytes: number[] }
+  | { kind: 'cancelled' };
 
-  return selected as string | null;
+/**
+ * Show the native "Open" dialog (accepts both .bshot projects and image
+ * files) and read the selected file — entirely on the Rust side. No path
+ * is ever passed from the renderer for this flow.
+ */
+export async function pickAndOpen(): Promise<OpenPickResult> {
+  return await invoke<OpenPickResult>('pick_and_open');
 }
 
 /**
- * Read a binary file from disk (used for opening image files via File > Open)
+ * Read a `.bshot` project dropped onto the window. The path comes from the
+ * OS drag-drop session (see editor-layout.tsx); Rust still validates
+ * extension/canonicalizes/bounds the read before trusting it.
  */
-export async function readBinaryFile(path: string): Promise<Uint8Array> {
-  const bytes: number[] = await invoke<number[]>('read_binary_file', { path });
+export async function readDroppedProject(path: string): Promise<ProjectLoadResult> {
+  return await invoke<ProjectLoadResult>('read_dropped_project', { path });
+}
+
+/**
+ * Read an image dropped onto the window (see readDroppedProject).
+ */
+export async function readDroppedImage(path: string): Promise<Uint8Array> {
+  const bytes: number[] = await invoke<number[]>('read_dropped_image', { path });
   return new Uint8Array(bytes);
+}
+
+/**
+ * Tell the backend no project is open anymore, so `delete_file` (which only
+ * trusts the tracked active project path) can no longer act on the
+ * previously-open project's file.
+ */
+export async function clearActiveProject(): Promise<void> {
+  await invoke('clear_active_project');
 }

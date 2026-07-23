@@ -13,10 +13,13 @@ import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useHotkeys } from "./hooks/use-hotkeys";
 import { useFileMenu } from "./hooks/use-file-menu";
 import { DeleteConfirmModal } from "./components/layout/delete-confirm-modal";
+import { UnsavedChangesModal } from "./components/layout/unsaved-changes-modal";
 import { useExport } from "./hooks/use-export";
 import { useSyncShortcuts } from "./hooks/use-sync-shortcuts";
 import { useSettingsStore } from "./stores/settings-store";
 import { useToastStore } from "./stores/toast-store";
+import { useProjectStore } from "./stores/project-store";
+import { releaseTransitionLock } from "./utils/project-io";
 import type { ThemeMode } from "./stores/settings-store";
 
 /** Determine if dark mode should be active based on theme setting */
@@ -84,12 +87,16 @@ function App() {
   const exportSaveAsRef = useRef(saveAs);
   exportSaveAsRef.current = saveAs;
 
-  // Delete confirmation modal state
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // Delete confirmation modal state — the target path is snapshotted at the
+  // moment deletion is requested (see use-file-menu.ts's handleDelete),
+  // rather than read reactively from the store, so a project opened later
+  // while this modal is still up can't get its own state cleared by a
+  // stale close-out (see delete-confirm-modal.tsx).
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // Wire up the File menu
   useFileMenu({
-    onDeleteRequest: () => setIsDeleteModalOpen(true),
+    onDeleteRequest: () => setDeleteTarget(useProjectStore.getState().filePath),
     exportSaveAsRef,
   });
 
@@ -146,9 +153,15 @@ function App() {
       <EditorLayout />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <UpdateModal />
+      <UnsavedChangesModal />
       <DeleteConfirmModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        filePath={deleteTarget}
+        onClose={() => {
+          // Matches the tryAcquireTransitionLock() call in
+          // use-file-menu.ts's handleDelete.
+          releaseTransitionLock();
+          setDeleteTarget(null);
+        }}
       />
     </>
   );

@@ -4,6 +4,7 @@ import { useEffect, useCallback } from 'react';
 import { useAnnotationStore } from '../stores/annotation-store';
 import { useSettingsStore } from '../stores/settings-store';
 import { useExport } from './use-export';
+import { projectSaveRef } from './use-file-menu';
 
 /**
  * Parse hotkey string to check if it matches a keyboard event
@@ -69,9 +70,17 @@ export function useKeyboardShortcuts() {
 
       const isMod = e.metaKey || e.ctrlKey;
 
-      // Cmd+S is handled by the Rust File > Save menu accelerator
-      // which fires menu-file-save → use-file-menu.ts handleSave.
-      // The isSavingRef guard there prevents double-firing.
+      // Save is handled entirely here (not via a native menu accelerator)
+      // so it honors the user's configured hotkey identically on
+      // macOS/Windows/Linux. Clicking File > Save still works — it emits
+      // menu-file-save, which calls the same handleSave via
+      // projectSaveRef, and that handler's own re-entrancy guard prevents
+      // double-firing if both land close together.
+      if (matchesHotkey(e, hotkeys.save)) {
+        e.preventDefault();
+        projectSaveRef.current?.();
+        return;
+      }
 
       if (matchesHotkey(e, hotkeys.copy)) {
         e.preventDefault();

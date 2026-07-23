@@ -630,10 +630,19 @@ fn clear_screenshot_data() -> Result<(), String>
 
 **File Operations:**
 ```rust
-fn save_file(path: String, data: Vec<u8>) -> Result<(), String>  // 50MB limit
-fn get_pictures_dir() -> Result<String, String>
-fn get_desktop_dir() -> Result<String, String>
+fn save_file(path: String, data: Vec<u8>) -> Result<String, String>       // 50MB limit, atomic write
+fn get_project_dir() -> Result<String, String>                            // ~/Pictures/beautiFULLshot
+fn write_project(path, metadata, screenshot_bytes, background_image_bytes)
+    -> Result<String, String>                                             // atomic .bshot write
+fn pick_and_open() -> Result<OpenPickResult, String>                       // Rust-owned Open dialog
+fn read_dropped_project(path: String) -> Result<ProjectData, String>      // drag-drop only
+fn read_dropped_image(path: String) -> Result<Vec<u8>, String>            // drag-drop only
+fn delete_file(path: String, move_to_trash: bool) -> Result<(), String>   // active-project only
+fn clear_active_project() -> Result<(), String>
 ```
+See "Project File System (.bshot)" below for the security model behind this
+command set (why `read_binary_file`/`read_project` were removed in favor of
+`pick_and_open`, and why `delete_file` no longer trusts an arbitrary path).
 
 **Shortcuts & Permissions:**
 ```rust
@@ -783,7 +792,8 @@ src-tauri/src/
 ├── screenshot.rs (148 LOC) - xcap integration, monitor/window enumeration
 ├── overlay.rs (126 LOC) - Fullscreen overlay creation/management
 ├── shortcuts.rs (155 LOC) - Global hotkey parsing and registration
-├── file_ops.rs (71 LOC) - Secure file save with path validation
+├── file_ops.rs - .bshot project I/O (atomic writes, zip bounds, dialog-owned
+│                 reads, active-project-tracked deletes) + secure file save
 ├── clipboard.rs (39 LOC) - PNG → system clipboard
 ├── tray.rs (69 LOC) - System tray icon and menu
 └── permissions.rs (32 LOC) - macOS/Linux permission checks
@@ -791,11 +801,60 @@ src-tauri/src/
 **Total:** ~694 LOC
 
 ### Security Implementation
-- **File Operations:** Path canonicalization, traversal prevention, 50MB limit
+- **File Operations:** Path canonicalization, traversal prevention, 50MB per-asset
+  limit, 200MB whole-archive limit, atomic writes (temp file + rename). See
+  "Project File System (.bshot)" for the read/delete trust model.
 - **Screenshot:** xcap handles platform-specific capture APIs
 - **Clipboard:** Base64 validation, image dimension checks
 - **Hotkeys:** Input validation on hotkey format strings
 - **Permissions:** macOS Screen Recording check, Wayland detection warning
+
+---
+
+## Project File System (.bshot)
+
+A `.bshot` project is a ZIP archive (`project.json` + `screenshot.png` +,
+optionally, `background.png` for a custom-image background) that round-trips
+the full editor state: canvas, background (including auto-detected color and
+custom images), annotations (including the number-tool counter), the
+committed crop aspect ratio, and export settings. `ProjectMetadata.version`
+is `2`; v1 archives (missing the newer fields) still load, defaulted via
+serde, and any file declaring a version newer than the app supports is
+rejected with a clear error rather than partially/incorrectly loaded.
+
+### Read/delete trust model (Rust)
+
+Two commands used to accept an arbitrary filesystem path from the renderer
+(`read_binary_file`, `delete_file`) — a compromised or buggy frontend could
+read or delete anything the OS user could access. Both are closed off:
+
+- **Open** (`pick_and_open`) shows the native file dialog **from Rust**
+  (`tauri_plugin_dialog`'s `DialogExt`) and reads the chosen file in the same
+  call. No path crosses the IPC boundary from JS for this flow at all.
+- **Drag-drop** (`read_dropped_project` / `read_dropped_image`) necessarily
+  still takes a path (it comes from the OS drag session, not a dialog Rust
+  owns), so it's hardened instead: canonicalized to resolve symlinks, must be
+  a regular file, and must match an extension allowlist before the bounded
+  ZIP reader touches it.
+- **Delete** (`delete_file`) only succeeds if the canonicalized path exactly
+  matches `AppState.active_project_path` — set only when a project is
+  actually opened or saved, and cleared on Close. The renderer cannot delete
+  a path it merely names.
+
+### Data-loss prevention (frontend)
+
+Every flow that can replace the current project/canvas — Open, Close,
+Capture (fullscreen/region/window), Paste, and drag-drop — funnels through
+`guardedProjectTransition()` (`src/utils/project-io.ts`), which:
+1. acquires a shared lock (so two such transitions, or a transition and the
+   Delete confirmation, can't interleave),
+2. prompts Save / Discard / Cancel if the project has unsaved changes
+   (`UnsavedChangesModal`), aborting the transition on Cancel,
+3. only then runs the actual replacement.
+
+`.bshot` saves (`write_project`) and plain file saves (`save_file`) write to
+a sibling temp file and `fs::rename` over the target, so a crash or
+disk-full mid-write can't leave a truncated file at the real path.
 
 ### Dependencies
 - **xcap** 0.8 - Cross-platform screenshot

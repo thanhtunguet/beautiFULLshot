@@ -35,6 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(file_ops::AppState::default())
         .setup(|app| {
             // Create system tray
             tray::create_tray(app.handle())?;
@@ -83,9 +84,11 @@ pub fn run() {
                 let file_open = MenuItemBuilder::with_id("file_open", "Open...")
                     .accelerator("CmdOrCtrl+O")
                     .build(handle)?;
-                let file_save = MenuItemBuilder::with_id("file_save", "Save")
-                    .accelerator("CmdOrCtrl+S")
-                    .build(handle)?;
+                // No accelerator here: Save is handled entirely in the frontend
+                // (use-keyboard-shortcuts.ts) so it honors the user's configured
+                // hotkey identically on macOS/Windows/Linux and never double-fires
+                // against a native accelerator. Clicking the menu item still works.
+                let file_save = MenuItemBuilder::with_id("file_save", "Save").build(handle)?;
                 let file_export = MenuItemBuilder::with_id("file_export", "Export...")
                     .accelerator("CmdOrCtrl+Shift+E")
                     .build(handle)?;
@@ -199,10 +202,12 @@ pub fn run() {
             permissions::open_accessibility_settings,
             file_ops::save_file,
             file_ops::get_project_dir,
-            file_ops::read_project,
             file_ops::write_project,
             file_ops::delete_file,
-            file_ops::read_binary_file,
+            file_ops::pick_and_open,
+            file_ops::read_dropped_project,
+            file_ops::read_dropped_image,
+            file_ops::clear_active_project,
             shortcuts::update_shortcuts,
             overlay::create_overlay_window,
             overlay::close_overlay_window,

@@ -3,11 +3,10 @@
 import { useEffect, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useCanvasStore } from '../stores/canvas-store';
-import { useCropStore } from '../stores/crop-store';
 import { useUIStore } from '../stores/ui-store';
 import * as screenshotApi from '../utils/screenshot-api';
 import { logError } from '../utils/logger';
+import { guardedProjectTransition, loadImageAsNewCanvas } from '../utils/project-io';
 import type { CaptureRegion } from '../types/screenshot';
 
 // Helper: Get image dimensions from bytes
@@ -88,8 +87,6 @@ function cropBase64Image(
  * Returns shortcut registration errors for UI display
  */
 export function useHotkeys(): void {
-  const { setImageFromBytes, fitToView } = useCanvasStore();
-  const { clearCrop } = useCropStore();
   const { openWindowPicker, openMonitorPicker } = useUIStore();
 
   // Capture fullscreen handler - captures monitor where cursor is located
@@ -99,10 +96,12 @@ export function useHotkeys(): void {
       const bytes = await screenshotApi.captureCursorMonitorHidden();
       if (bytes) {
         const { width, height } = await getImageDimensions(bytes);
-        clearCrop(); // Clear any existing crop when loading new image
-        setImageFromBytes(bytes, width, height);
-        // Auto-fit to view after capture
-        setTimeout(() => fitToView(), 50);
+        // Prompt to save/discard any unsaved project before replacing the
+        // canvas with the new capture (capture happens first so the
+        // confirmation modal itself is never included in the screenshot).
+        await guardedProjectTransition(async () => {
+          await loadImageAsNewCanvas(bytes, width, height);
+        });
       }
     } catch (e) {
       logError('useHotkeys:capture', e);
@@ -113,7 +112,7 @@ export function useHotkeys(): void {
         appWindow.emit('permission-denied', {});
       }
     }
-  }, [clearCrop, setImageFromBytes, fitToView]);
+  }, []);
 
   // Capture region handler - opens fullscreen overlay for selection
   // If multiple monitors, shows monitor picker first
@@ -167,9 +166,9 @@ export function useHotkeys(): void {
         const croppedBytes = await cropBase64Image(screenshotBase64, region);
         if (croppedBytes) {
           const { width, height } = await getImageDimensions(croppedBytes);
-          clearCrop();
-          setImageFromBytes(croppedBytes, width, height);
-          setTimeout(() => fitToView(), 50);
+          await guardedProjectTransition(async () => {
+            await loadImageAsNewCanvas(croppedBytes, width, height);
+          });
         }
       }
 
@@ -183,7 +182,7 @@ export function useHotkeys(): void {
       await appWindow.show();
       appWindow.setFocus();
     }
-  }, [clearCrop, setImageFromBytes, fitToView]);
+  }, []);
 
   // Handle region selection cancelled
   const handleRegionCancelled = useCallback(async () => {

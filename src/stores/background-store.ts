@@ -402,6 +402,13 @@ export const useBackgroundStore = create<BackgroundState>()(
     }),
     {
       name: 'background-settings',
+      // Bumped from the implicit v0 shape (no `version` key at all) now
+      // that the shape is under active change (round-trip/.bshot work) —
+      // `migrate` is a passthrough today, but this gives any future shape
+      // change a safe upgrade path instead of Zustand silently discarding
+      // a version-mismatched persisted state.
+      version: 1,
+      migrate: (persistedState) => persistedState,
       // Only persist settings values, not runtime state like images/blobs
       partialize: (state) => ({
         type: state.type,
