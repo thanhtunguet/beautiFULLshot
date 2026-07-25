@@ -74,6 +74,15 @@ export async function guardedProjectTransition(
     if (!proceed) return false;
     await action();
     return true;
+  } catch (e) {
+    // Every project-replacing entry point funnels through here, so this is
+    // the one place that has to surface a failure. Without it, a rejected
+    // version gate, a malformed archive, or an I/O error from the Rust side
+    // would be swallowed and the user would see nothing happen at all.
+    logError('guardedProjectTransition', e);
+    const message = e instanceof Error ? e.message : String(e);
+    toast.error('Open Failed', message);
+    return false;
   } finally {
     releaseTransitionLock();
   }
@@ -120,10 +129,24 @@ export async function saveProject(): Promise<boolean> {
       if (!savePath) return false;
     }
 
+    // Snapshot the document revision alongside the content itself. Anything
+    // the user edits while the write is in flight bumps the revision, and
+    // must leave the project dirty — the bytes on disk predate that edit.
+    const revisionAtSnapshot = useProjectStore.getState().revision;
     const data = await buildProjectSaveData();
     const savedPath = await writeProject(savePath, data);
     const displayPath = normalizePath(savedPath);
-    useProjectStore.getState().setFilePath(displayPath);
+
+    const store = useProjectStore.getState();
+    if (store.revision === revisionAtSnapshot) {
+      store.setFilePath(displayPath);
+    } else {
+      // Record where the project now lives without claiming it is clean.
+      useProjectStore.setState({
+        filePath: displayPath,
+        isOpen: true,
+      });
+    }
 
     toast.success(
       'Saved',
@@ -221,7 +244,14 @@ export function buildProjectMetadata(hasCustomImage: boolean): ProjectMetadata {
       pixelRatio: exportSettings.pixelRatio,
       outputAspectRatio: exportSettings.outputAspectRatio,
     },
-    crop: { aspectRatio: crop.aspectRatio },
+    crop: {
+      aspectRatio: crop.aspectRatio,
+      // An active (drawn but not yet applied) selection is part of what the
+      // user sees, so it round-trips too — otherwise reopening shows the
+      // uncropped image with the selection silently gone.
+      isCropping: crop.isCropping,
+      cropRect: crop.cropRect,
+    },
     numberCounter,
   };
 }
@@ -363,9 +393,14 @@ export function restoreProjectFromData(
   bgActions.setBorderColor(bg.borderColor);
   bgActions.setBorderOpacity(bg.borderOpacity);
 
-  // Restore crop
+  // Restore crop, including an in-progress selection. Set as one state
+  // update rather than via startCrop(), which resets cropRect to null.
   if (metadata.crop) {
-    cropStore.setAspectRatio(metadata.crop.aspectRatio);
+    useCropStore.setState({
+      aspectRatio: metadata.crop.aspectRatio,
+      isCropping: metadata.crop.isCropping ?? false,
+      cropRect: metadata.crop.cropRect ?? null,
+    });
   }
 
   // Restore export settings
@@ -403,6 +438,10 @@ export async function closeProjectAndClearCanvas(): Promise<void> {
 /**
  * Detach from any currently-open project and load `bytes` as a brand-new,
  * unsaved canvas image.
+ *
+ * The result is an *untitled document*, not an absence of one: it has no
+ * file path, but it is open, so edits made to it mark it dirty and are
+ * protected by the same discard prompt as a saved project.
  */
 export async function loadImageAsNewCanvas(
   bytes: Uint8Array,
@@ -411,6 +450,9 @@ export async function loadImageAsNewCanvas(
 ): Promise<void> {
   await closeProjectAndClearCanvas();
   useCanvasStore.getState().setImageFromBytes(bytes, width, height);
+  // Marked open *after* the image lands so loading it doesn't itself count
+  // as an edit — the new document starts clean.
+  useProjectStore.getState().startUntitledProject();
   setTimeout(() => useCanvasStore.getState().fitToView(), 100);
 }
 

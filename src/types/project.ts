@@ -1,6 +1,7 @@
 // Project file types — matches .bshot project.json schema
 
 import type { Annotation } from './annotations';
+import type { CropRect } from '../stores/crop-store';
 
 // Background types match background-store.ts
 export type BackgroundType = 'gradient' | 'solid' | 'transparent' | 'wallpaper' | 'image' | 'auto';
@@ -36,9 +37,13 @@ export interface BackgroundMeta {
   hasCustomImage: boolean;
 }
 
-/** Committed crop settings. v2 field — absent on v1 files. */
+/** Crop settings. v2 field — absent on v1 files. */
 export interface CropMeta {
   aspectRatio: number | null;
+  /** Whether a selection was active (drawn but not applied) when saved. */
+  isCropping?: boolean;
+  /** The in-progress selection rectangle, in source-image coordinates. */
+  cropRect?: CropRect | null;
 }
 
 export interface CanvasMeta {

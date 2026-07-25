@@ -4,9 +4,12 @@ import { useState, useCallback } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { useScreenshot } from '../../hooks/use-screenshot';
 import { useCanvasStore } from '../../stores/canvas-store';
-import { useAnnotationStore } from '../../stores/annotation-store';
-import { useCropStore } from '../../stores/crop-store';
 import { useUIStore } from '../../stores/ui-store';
+import {
+  guardedProjectTransition,
+  loadImageAsNewCanvas,
+  closeProjectAndClearCanvas,
+} from '../../utils/project-io';
 import { ToolButtons } from './tool-buttons';
 import { ToolSettings } from './tool-settings';
 import { UndoRedoButtons } from './undo-redo-buttons';
@@ -37,27 +40,28 @@ function getImageDimensions(bytes: Uint8Array): Promise<{ width: number; height:
 
 export function Toolbar() {
   const { captureFullscreen, loading, error, waylandWarning } = useScreenshot();
-  const { setImageFromBytes, clearCanvas, imageUrl, fitToView } = useCanvasStore();
-  const { clearAnnotations } = useAnnotationStore();
-  const { clearCrop } = useCropStore();
+  const imageUrl = useCanvasStore((s) => s.imageUrl);
   const { openWindowPicker } = useUIStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
+  // Capturing replaces the canvas, so it must go through the same guarded
+  // transition as every other capture path (global hotkey, window picker,
+  // paste, drop). Writing to the canvas directly would discard unsaved edits
+  // without prompting AND leave the previous project's path active, so the
+  // next Save would overwrite that project with this capture.
   const handleCaptureFullscreen = useCallback(async () => {
     const bytes = await captureFullscreen();
-    if (bytes) {
-      try {
-        const { width, height } = await getImageDimensions(bytes);
-        clearCrop(); // Clear any existing crop when loading new image
-        setImageFromBytes(bytes, width, height);
-        // Auto-fit to view after capture
-        setTimeout(() => fitToView(), 50);
-      } catch (e) {
-        logError('Toolbar:captureFullscreen', e);
-      }
+    if (!bytes) return;
+    try {
+      const { width, height } = await getImageDimensions(bytes);
+      await guardedProjectTransition(async () => {
+        await loadImageAsNewCanvas(bytes, width, height);
+      });
+    } catch (e) {
+      logError('Toolbar:captureFullscreen', e);
     }
-  }, [captureFullscreen, clearCrop, setImageFromBytes, fitToView]);
+  }, [captureFullscreen]);
 
   return (
     <div className="h-14 glass floating-panel flex items-center px-3 gap-2 overflow-visible">
@@ -110,8 +114,8 @@ export function Toolbar() {
       {imageUrl && (
         <button
           onClick={() => {
-            clearCanvas();
-            clearAnnotations();
+            // Discards the whole document, so it prompts like Close does.
+            void guardedProjectTransition(closeProjectAndClearCanvas);
           }}
           aria-label="Clear current screenshot and annotations"
           className="px-4 py-2 glass-btn rounded-xl text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white font-medium text-sm flex-shrink-0"

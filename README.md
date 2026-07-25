@@ -68,7 +68,7 @@ chmod +x BeautyFullShot_*.AppImage
 
 ### Prerequisites
 
-- Rust 1.70+
+- Rust 1.85+ (enforced via `rust-version` in `src-tauri/Cargo.toml`)
 - Node.js 18+
 - Platform-specific build tools:
   - **Windows**: Microsoft Visual Studio Build Tools

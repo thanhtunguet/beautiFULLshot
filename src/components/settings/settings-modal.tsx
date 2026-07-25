@@ -17,7 +17,7 @@ const HOTKEY_LABELS: Record<keyof HotkeyConfig, string> = {
   capture: 'Capture Screen',
   captureRegion: 'Capture Region',
   captureWindow: 'Capture Window',
-  save: 'Quick Save',
+  save: 'Save Project',
   copy: 'Copy to Clipboard',
 };
 

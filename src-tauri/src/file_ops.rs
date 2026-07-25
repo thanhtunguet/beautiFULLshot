@@ -1,5 +1,6 @@
 // File operations for beautiFULLshot export and project system
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
@@ -28,10 +29,49 @@ const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 #[derive(Default)]
 pub struct AppState {
     pub active_project_path: Mutex<Option<PathBuf>>,
+    /// Canonicalized paths the *trusted* side has authorized the renderer to
+    /// read exactly once. Populated only from Rust-owned OS events (the
+    /// native drag-drop handler and the file-association open handler), never
+    /// from an `invoke` argument. `read_dropped_project`/`read_dropped_image`
+    /// consume a grant instead of trusting the path they are handed, so a
+    /// compromised renderer cannot name an arbitrary file, have it read, and
+    /// thereby have it recorded as the active (deletable) project.
+    pub pending_path_grants: Mutex<HashSet<PathBuf>>,
 }
 
 fn set_active_project_path(state: &tauri::State<AppState>, path: PathBuf) {
     *state.active_project_path.lock().unwrap() = Some(path);
+}
+
+/// Authorize one future renderer read of `path`. Called from Rust-side OS
+/// event handlers only. The path is canonicalized here so the grant is
+/// recorded in the same normalized form the command will look it up by.
+/// Returns whether a grant was issued (false for a path that doesn't
+/// resolve to a regular file).
+pub fn grant_path_read(state: &AppState, path: &Path) -> bool {
+    match canonicalize_existing(path) {
+        Ok(canonical) => {
+            state.pending_path_grants.lock().unwrap().insert(canonical);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Consume a previously issued grant for `canonical`. Returns an error if no
+/// grant exists, which is the case for any path the renderer invented.
+fn consume_path_grant(state: &tauri::State<AppState>, canonical: &Path) -> Result<(), String> {
+    let removed = state
+        .pending_path_grants
+        .lock()
+        .unwrap()
+        .remove(canonical);
+
+    if removed {
+        Ok(())
+    } else {
+        Err("This file was not offered to the app by the system. Use File > Open to choose it.".to_string())
+    }
 }
 
 /// Clear the tracked active project (called when the frontend closes a project)
@@ -64,9 +104,25 @@ pub struct WallpaperMeta {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CropRectMeta {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct CropMeta {
     #[serde(rename = "aspectRatio")]
     pub aspect_ratio: Option<f64>,
+    /// Whether a crop selection was active (drawn but not yet applied) when
+    /// the project was saved. Absent on files written before this field
+    /// existed, which had no way to represent an in-progress crop.
+    #[serde(rename = "isCropping", default)]
+    pub is_cropping: bool,
+    /// The in-progress selection rectangle, in source-image coordinates.
+    #[serde(rename = "cropRect", default)]
+    pub crop_rect: Option<CropRectMeta>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -115,6 +171,22 @@ fn default_number_counter() -> u32 {
     1
 }
 
+/// A single annotation. Rust does not model each shape variant's fields —
+/// the renderer owns that schema — but it does enforce that every entry is
+/// a JSON object carrying the `id` and `type` discriminators the renderer
+/// unconditionally dereferences. Anything else (null, a scalar, an object
+/// missing `type`) is rejected at parse time, so a malformed project fails
+/// with an actionable "invalid project" error instead of crashing the
+/// editor after the project has already been activated.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AnnotationValue {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub annotation_type: String,
+    #[serde(flatten)]
+    pub rest: serde_json::Map<String, serde_json::Value>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectMetadata {
     pub version: u32,
@@ -126,7 +198,13 @@ pub struct ProjectMetadata {
     pub source_image: String,
     pub canvas: CanvasMeta,
     pub background: BackgroundMeta,
-    pub annotations: serde_json::Value,
+    /// Annotations are passed through to the frontend without Rust
+    /// interpreting each variant's fields, but the *collection* is typed as
+    /// a list of objects. A bare `serde_json::Value` here would let
+    /// `"annotations": null` (or a string, or a number) deserialize
+    /// successfully and only fail later in the renderer when `.map()` is
+    /// called on it.
+    pub annotations: Vec<AnnotationValue>,
     #[serde(rename = "exportSettings")]
     pub export_settings: ExportSettingsMeta,
     /// Committed crop aspect ratio. Added in v2 — absent on v1 files.
@@ -193,6 +271,43 @@ fn has_extension(path: &Path, allowed: &[&str]) -> bool {
         .and_then(|e| e.to_str())
         .map(|e| allowed.iter().any(|a| a.eq_ignore_ascii_case(e)))
         .unwrap_or(false)
+}
+
+/// Read a file into memory without ever allocating more than `MAX_FILE_SIZE`.
+/// The size is checked from the open handle's own metadata (not a separate
+/// `fs::metadata` call, which a swap between the two could invalidate), and
+/// the read is then capped with `Read::take` so a file that grows after the
+/// check — or one whose reported length lies, as with some virtual
+/// filesystems — still cannot exhaust memory.
+fn read_file_bounded(path: &Path) -> Result<Vec<u8>, String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("Failed to read file: {}", e))?
+        .len();
+
+    if len > MAX_FILE_SIZE as u64 {
+        return Err(format!(
+            "File size ({} MB) exceeds maximum allowed ({} MB)",
+            len / (1024 * 1024),
+            MAX_FILE_SIZE / (1024 * 1024)
+        ));
+    }
+
+    let mut buf = Vec::with_capacity(len as usize);
+    (&mut file)
+        .take(MAX_FILE_SIZE as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    if buf.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File size exceeds maximum allowed ({} MB)",
+            MAX_FILE_SIZE / (1024 * 1024)
+        ));
+    }
+
+    Ok(buf)
 }
 
 /// Write `data` to `path` atomically: write to a sibling temp file, flush +
@@ -296,16 +411,34 @@ fn validate_delete_target(canonical: &Path, active: &Option<PathBuf>) -> Result<
 /// drag-drop flow. `path` must already have been canonicalized/validated by
 /// the caller.
 fn read_project_from_path(path: &Path) -> Result<ProjectData, String> {
-    let file_meta = fs::metadata(path).map_err(|e| format!("Could not open project file: {}", e))?;
-    if file_meta.len() > MAX_ARCHIVE_FILE_SIZE {
+    // Size-check and read share one handle, and the read is capped, so the
+    // archive can never be allocated in full before being rejected.
+    let mut file = fs::File::open(path).map_err(|e| format!("Could not open project file: {}", e))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("Could not open project file: {}", e))?
+        .len();
+
+    if len > MAX_ARCHIVE_FILE_SIZE {
         return Err(format!(
             "Project file ({} MB) exceeds maximum allowed ({} MB)",
-            file_meta.len() / (1024 * 1024),
+            len / (1024 * 1024),
             MAX_ARCHIVE_FILE_SIZE / (1024 * 1024)
         ));
     }
 
-    let file_bytes = fs::read(path).map_err(|e| format!("Could not open project file: {}", e))?;
+    let mut file_bytes = Vec::with_capacity(len as usize);
+    (&mut file)
+        .take(MAX_ARCHIVE_FILE_SIZE + 1)
+        .read_to_end(&mut file_bytes)
+        .map_err(|e| format!("Could not open project file: {}", e))?;
+
+    if file_bytes.len() as u64 > MAX_ARCHIVE_FILE_SIZE {
+        return Err(format!(
+            "Project file exceeds maximum allowed ({} MB)",
+            MAX_ARCHIVE_FILE_SIZE / (1024 * 1024)
+        ));
+    }
 
     let cursor = Cursor::new(file_bytes);
     let mut archive = zip::ZipArchive::new(cursor)
@@ -509,14 +642,7 @@ pub async fn pick_and_open(
             data,
         })
     } else if has_extension(&canonical, IMAGE_EXTENSIONS) {
-        let bytes = fs::read(&canonical).map_err(|e| format!("Failed to read file: {}", e))?;
-        if bytes.len() > MAX_FILE_SIZE {
-            return Err(format!(
-                "File size ({} MB) exceeds maximum allowed ({} MB)",
-                bytes.len() / (1024 * 1024),
-                MAX_FILE_SIZE / (1024 * 1024)
-            ));
-        }
+        let bytes = read_file_bounded(&canonical)?;
         Ok(OpenPickResult::Image {
             path: canonical.to_string_lossy().to_string(),
             bytes,
@@ -526,11 +652,13 @@ pub async fn pick_and_open(
     }
 }
 
-/// Read a `.bshot` project dropped onto the window. Unlike `pick_and_open`,
-/// the path originates from an OS drag-drop session rather than a
-/// Rust-owned dialog, so it is hardened instead: canonicalized (resolving
-/// symlinks), required to be a regular file, and required to have the
-/// `.bshot` extension before the bounded ZIP reader ever touches it.
+/// Read a `.bshot` project the OS offered to the app (a webview drag-drop,
+/// or a file-association open). The path argument is *not* trusted on its
+/// own: a one-use grant recorded by the Rust-side event handler must exist
+/// for it, so the renderer can only ask for files the user actually dropped
+/// or double-clicked. The path is additionally canonicalized (resolving
+/// symlinks), required to be a regular file, and required to carry the
+/// `.bshot` extension before the bounded ZIP reader touches it.
 #[tauri::command]
 pub async fn read_dropped_project(
     state: tauri::State<'_, AppState>,
@@ -538,6 +666,7 @@ pub async fn read_dropped_project(
 ) -> Result<ProjectData, String> {
     let path = PathBuf::from(&path);
     let canonical = canonicalize_existing(&path)?;
+    consume_path_grant(&state, &canonical)?;
 
     if !has_extension(&canonical, &["bshot"]) {
         return Err("Not a beautiFULLshot project file".to_string());
@@ -548,28 +677,24 @@ pub async fn read_dropped_project(
     Ok(data)
 }
 
-/// Read an image dropped onto the window. Hardened the same way as
-/// `read_dropped_project`: canonicalized, must be a regular file, and must
-/// match the image extension allowlist.
+/// Read an image the OS offered to the app. Same trust model as
+/// `read_dropped_project`: requires a one-use Rust-issued grant, then
+/// canonicalizes, requires a regular file, and enforces the image
+/// extension allowlist.
 #[tauri::command]
-pub async fn read_dropped_image(path: String) -> Result<Vec<u8>, String> {
+pub async fn read_dropped_image(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<Vec<u8>, String> {
     let path = PathBuf::from(&path);
     let canonical = canonicalize_existing(&path)?;
+    consume_path_grant(&state, &canonical)?;
 
     if !has_extension(&canonical, IMAGE_EXTENSIONS) {
         return Err("Not a supported image file".to_string());
     }
 
-    let bytes = fs::read(&canonical).map_err(|e| format!("Failed to read file: {}", e))?;
-    if bytes.len() > MAX_FILE_SIZE {
-        return Err(format!(
-            "File size ({} MB) exceeds maximum allowed ({} MB)",
-            bytes.len() / (1024 * 1024),
-            MAX_FILE_SIZE / (1024 * 1024)
-        ));
-    }
-
-    Ok(bytes)
+    read_file_bounded(&canonical)
 }
 
 /// Delete a file — move to system trash or permanently delete.
@@ -646,14 +771,23 @@ mod tests {
                 auto_color: Some("#abcdef".to_string()),
                 has_custom_image,
             },
-            annotations: serde_json::json!([]),
+            annotations: Vec::new(),
             export_settings: ExportSettingsMeta {
                 format: "png".to_string(),
                 quality: 0.9,
                 pixel_ratio: 1,
                 output_aspect_ratio: "auto".to_string(),
             },
-            crop: Some(CropMeta { aspect_ratio: Some(1.5) }),
+            crop: Some(CropMeta {
+                aspect_ratio: Some(1.5),
+                is_cropping: true,
+                crop_rect: Some(CropRectMeta {
+                    x: 10.0,
+                    y: 20.0,
+                    width: 300.0,
+                    height: 200.0,
+                }),
+            }),
             number_counter: 3,
         }
     }
@@ -772,7 +906,11 @@ mod tests {
         assert_eq!(data.metadata.version, 2);
         assert_eq!(data.metadata.background.auto_color.as_deref(), Some("#abcdef"));
         assert!(data.metadata.background.has_custom_image);
-        assert_eq!(data.metadata.crop.unwrap().aspect_ratio, Some(1.5));
+        let crop = data.metadata.crop.unwrap();
+        assert_eq!(crop.aspect_ratio, Some(1.5));
+        assert!(crop.is_cropping);
+        let rect = crop.crop_rect.unwrap();
+        assert_eq!((rect.x, rect.y, rect.width, rect.height), (10.0, 20.0, 300.0, 200.0));
         assert_eq!(data.metadata.number_counter, 3);
         assert_eq!(data.screenshot_bytes, b"screenshot-bytes");
         assert_eq!(data.background_image_bytes, Some(background_bytes));
@@ -848,6 +986,147 @@ mod tests {
         assert!(!data.metadata.background.has_custom_image);
         assert!(data.metadata.crop.is_none());
 
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Build a project.json with an arbitrary `annotations` value, zip it,
+    /// and try to read it back. Used to pin down which shapes are rejected.
+    fn read_with_annotations(label: &str, annotations: serde_json::Value) -> Result<ProjectData, String> {
+        let dir = unique_temp_dir(label);
+        let path = dir.join("project.bshot");
+
+        let mut json = serde_json::to_value(sample_metadata(2, false)).unwrap();
+        json["annotations"] = annotations;
+
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("project.json", options).unwrap();
+            writer.write_all(json.to_string().as_bytes()).unwrap();
+            writer.start_file("screenshot.png", options).unwrap();
+            writer.write_all(b"screenshot").unwrap();
+            writer.finish().unwrap();
+        }
+        fs::write(&path, buf.into_inner()).unwrap();
+
+        let result = read_project_from_path(&path);
+        fs::remove_dir_all(&dir).ok();
+        result
+    }
+
+    #[test]
+    fn read_project_rejects_null_annotations() {
+        // Regression: `annotations: serde_json::Value` accepted null here,
+        // and the renderer then crashed on annotations.map().
+        let result = read_with_annotations("ann_null", serde_json::Value::Null);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse project.json"));
+    }
+
+    #[test]
+    fn read_project_rejects_annotations_that_are_not_a_list() {
+        let result = read_with_annotations("ann_scalar", serde_json::json!("not a list"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_project_rejects_annotation_entries_missing_discriminators() {
+        // An entry without `type` would reach the renderer's switch and fall
+        // through to undefined behavior; reject it at parse time.
+        let result = read_with_annotations("ann_no_type", serde_json::json!([{ "id": "a1" }]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_project_preserves_unknown_annotation_fields() {
+        // Rust must not model each shape's fields — a valid annotation's
+        // extra keys have to survive the round trip to the renderer intact.
+        let data = read_with_annotations(
+            "ann_ok",
+            serde_json::json!([{
+                "id": "a1",
+                "type": "rectangle",
+                "x": 1.0,
+                "width": 40.0,
+                "fill": "#ff0000"
+            }]),
+        )
+        .unwrap();
+
+        assert_eq!(data.metadata.annotations.len(), 1);
+        let ann = &data.metadata.annotations[0];
+        assert_eq!(ann.id, "a1");
+        assert_eq!(ann.annotation_type, "rectangle");
+        assert_eq!(ann.rest.get("fill").unwrap(), "#ff0000");
+        assert_eq!(ann.rest.get("width").unwrap(), 40.0);
+    }
+
+    // ─── bounded file reads ──────────────────────────────────────────
+
+    #[test]
+    fn read_file_bounded_reads_a_small_file() {
+        let dir = unique_temp_dir("bounded_ok");
+        let path = dir.join("image.png");
+        fs::write(&path, b"png-bytes").unwrap();
+
+        assert_eq!(read_file_bounded(&path).unwrap(), b"png-bytes");
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_file_bounded_reports_a_missing_file() {
+        let dir = unique_temp_dir("bounded_missing");
+        let result = read_file_bounded(&dir.join("nope.png"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read file"));
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    // ─── drag-drop read grants ───────────────────────────────────────
+
+    #[test]
+    fn grant_path_read_records_the_canonical_path() {
+        let dir = unique_temp_dir("grant_record");
+        let path = dir.join("project.bshot");
+        fs::write(&path, b"x").unwrap();
+
+        let state = AppState::default();
+        grant_path_read(&state, &path);
+
+        let granted = state.pending_path_grants.lock().unwrap();
+        assert!(granted.contains(&path.canonicalize().unwrap()));
+
+        drop(granted);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn grant_path_read_ignores_paths_that_do_not_exist() {
+        let state = AppState::default();
+        grant_path_read(&state, Path::new("/definitely/not/a/real/file.bshot"));
+        assert!(state.pending_path_grants.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_grant_is_consumed_by_a_single_read() {
+        // The core of the threat model: a grant authorizes exactly one read,
+        // so a renderer cannot replay a legitimate drop to re-authorize a
+        // path later.
+        let dir = unique_temp_dir("grant_once");
+        let path = dir.join("project.bshot");
+        fs::write(&path, b"x").unwrap();
+        let canonical = path.canonicalize().unwrap();
+
+        let state = AppState::default();
+        grant_path_read(&state, &path);
+
+        let mut grants = state.pending_path_grants.lock().unwrap();
+        assert!(grants.remove(&canonical), "first read should find a grant");
+        assert!(!grants.remove(&canonical), "second read should find none");
+
+        drop(grants);
         fs::remove_dir_all(&dir).ok();
     }
 

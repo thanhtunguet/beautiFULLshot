@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { listen } from '@tauri-apps/api/event';
 import { CanvasEditor } from '../canvas/canvas-editor';
 import { ZoomControls } from '../canvas/zoom-controls';
 import { Toolbar } from '../toolbar/toolbar';
@@ -74,60 +75,59 @@ export function EditorLayout() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [handleImageFile]);
 
-  // Handle drag-drop via Tauri's native webview drag-drop event, which
-  // delivers real filesystem paths. Browser `File.path` is not populated in
-  // the webview (see tauri.conf.json's `dragDropEnabled`), so the old
-  // DOM dragenter/dragover/drop listeners could never resolve a `.bshot`
-  // file's path — this replaces them entirely.
+  // Drag-hover highlight only. Tauri's own drag-drop event fires *before*
+  // the Rust handler that authorizes the dropped paths, so acting on its
+  // 'drop' here would race that authorization. The actual open is driven by
+  // the `files-dropped` event below, which Rust emits only after granting.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     getCurrentWebview()
       .onDragDropEvent((event) => {
-        const payload = event.payload;
-        switch (payload.type) {
-          case 'enter':
-          case 'over':
-            setIsDragging(true);
-            break;
-          case 'leave':
-            setIsDragging(false);
-            break;
-          case 'drop': {
-            setIsDragging(false);
-            const path = payload.paths[0];
-            if (!path) break;
-
-            const isProject = path.toLowerCase().endsWith('.bshot');
-            const isImage = IMAGE_EXTENSION_RE.test(path);
-
-            if (isProject) {
-              void guardedProjectTransition(async () => {
-                const result = await readDroppedProject(path);
-                await openProjectFromData(
-                  path,
-                  result.metadata,
-                  result.screenshotBytes,
-                  result.backgroundImageBytes
-                );
-              });
-            } else if (isImage) {
-              void guardedProjectTransition(async () => {
-                const bytes = await readDroppedImage(path);
-                await openImageFromBytes(path, bytes);
-              });
-            } else {
-              toast.error('Open Failed', 'Unsupported file type.');
-            }
-            break;
-          }
-        }
+        const type = event.payload.type;
+        setIsDragging(type === 'enter' || type === 'over');
       })
       .then((fn) => {
         unlisten = fn;
       });
 
     return () => unlisten?.();
+  }, []);
+
+  // Open a file the OS dropped on the window. Emitted by the Rust drag-drop
+  // handler after it has recorded a one-use read grant for each path, so
+  // these reads are the only ones the backend will honor.
+  useEffect(() => {
+    const unlisten = listen<string[]>('files-dropped', (event) => {
+      const path = event.payload[0];
+      if (!path) return;
+
+      const isProject = path.toLowerCase().endsWith('.bshot');
+      const isImage = IMAGE_EXTENSION_RE.test(path);
+
+      if (isProject) {
+        void guardedProjectTransition(async () => {
+          const result = await readDroppedProject(path);
+          await openProjectFromData(
+            path,
+            result.metadata,
+            result.screenshotBytes,
+            result.backgroundImageBytes
+          );
+        });
+      } else if (isImage) {
+        void guardedProjectTransition(async () => {
+          const bytes = await readDroppedImage(path);
+          await openImageFromBytes(path, bytes);
+        });
+      } else {
+        toast.error('Open Failed', 'Unsupported file type.');
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   return (

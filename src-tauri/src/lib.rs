@@ -5,9 +5,9 @@ use std::sync::atomic::AtomicBool;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use tauri::{Emitter, WindowEvent};
+use tauri::{DragDropEvent, Emitter, Manager, WebviewEvent, WindowEvent};
 #[cfg(target_os = "macos")]
-use tauri::{Manager, RunEvent};
+use tauri::RunEvent;
 
 /// Path of a .bshot file passed to the app at launch (CLI arg on Windows/Linux,
 /// Apple Events on macOS). The frontend reads this once via get_startup_file()
@@ -15,13 +15,17 @@ use tauri::{Manager, RunEvent};
 /// event loop and read from a Tauri command on any thread.
 static STARTUP_FILE: Mutex<Option<String>> = Mutex::new(None);
 
-/// Store a file path if it is a .bshot file that exists on disk.
-fn store_startup_file(path: &str) {
+/// Store a file path if it is a .bshot file that exists on disk. Returns
+/// whether the path was accepted, so the caller knows to issue a matching
+/// read grant.
+fn store_startup_file(path: &str) -> bool {
     if path.ends_with(".bshot") && std::path::Path::new(path).exists() {
         if let Ok(mut guard) = STARTUP_FILE.lock() {
             *guard = Some(path.to_owned());
+            return true;
         }
     }
+    false
 }
 
 /// Called by the frontend once it is ready. Consumes and returns the startup
@@ -62,6 +66,34 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(file_ops::AppState::default())
+        // Authorize renderer reads of dropped paths from the trusted side,
+        // then hand the paths to the frontend ourselves.
+        //
+        // Tauri also emits its own drag-drop event to the webview, but it
+        // does so *before* running these listeners, so a frontend that acted
+        // on that event would race the grant. Emitting `files-dropped` after
+        // the grants are recorded removes the race: by the time the frontend
+        // sees this event, every path in it is already authorized. The
+        // frontend uses Tauri's native event only for the drag-hover
+        // highlight, never to trigger a read.
+        .on_webview_event(|webview, event| {
+            let WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event else {
+                return;
+            };
+
+            let state = webview.state::<file_ops::AppState>();
+            let granted: Vec<String> = paths
+                .iter()
+                .filter_map(|path| {
+                    file_ops::grant_path_read(&state, path)
+                        .then(|| path.to_string_lossy().into_owned())
+                })
+                .collect();
+
+            if !granted.is_empty() {
+                let _ = webview.emit("files-dropped", granted);
+            }
+        })
         .setup(|app| {
             // Create system tray
             tray::create_tray(app.handle())?;
@@ -194,7 +226,15 @@ pub fn run() {
             // On macOS, fresh-launch file-open events arrive via RunEvent::Opened
             // below instead of as CLI args.
             for arg in std::env::args().skip(1) {
-                store_startup_file(&arg);
+                if store_startup_file(&arg) {
+                    // The frontend reads this path back via get_startup_file()
+                    // and then asks Rust to open it, so it needs a grant just
+                    // like a dropped path does.
+                    file_ops::grant_path_read(
+                        &app.state::<file_ops::AppState>(),
+                        std::path::Path::new(&arg),
+                    );
+                }
             }
 
             Ok(())
@@ -306,7 +346,16 @@ pub fn run() {
                                 if path_str.ends_with(".bshot") {
                                     // Always store so get_startup_file() works
                                     // if the webview is not yet ready.
-                                    store_startup_file(&path_str);
+                                    if !store_startup_file(&path_str) {
+                                        continue;
+                                    }
+                                    // The frontend will invoke back to read
+                                    // this path, so authorize it here on the
+                                    // trusted side.
+                                    file_ops::grant_path_read(
+                                        &_app.state::<file_ops::AppState>(),
+                                        &path,
+                                    );
 
                                     if let Some(window) = _app.get_webview_window("main") {
                                         // The app may be sitting as a tray icon

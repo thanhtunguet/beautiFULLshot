@@ -9,12 +9,23 @@ import { useExportStore } from './export-store';
 import { useCropStore } from './crop-store';
 
 export interface ProjectState {
+  /** Path on disk, or null for a document that has never been saved. */
   filePath: string | null;
   isDirty: boolean;
+  /** Whether a document exists to edit at all (an empty editor has none). */
   isOpen: boolean;
+  /**
+   * Monotonic counter bumped on every tracked content change. `saveProject`
+   * snapshots this before an async write and only clears `isDirty` if it is
+   * unchanged afterwards, so edits made mid-save aren't misreported as
+   * persisted.
+   */
+  revision: number;
 
   markDirty: () => void;
   markClean: () => void;
+  /** Begin an untitled document (capture/paste/drop): open, no path yet. */
+  startUntitledProject: () => void;
   openProject: (path: string) => void;
   closeProject: () => void;
   setFilePath: (path: string) => void;
@@ -22,16 +33,28 @@ export interface ProjectState {
 
 let subscriptionsActive = false;
 
+/**
+ * Mark the current document dirty and advance its revision.
+ *
+ * This is gated on `isOpen` alone, never on `filePath`. An untitled document
+ * (a fresh capture/paste/drop) is open with a null path, and its edits must
+ * count as unsaved work — otherwise a later transition would discard them
+ * without ever prompting.
+ */
+function bumpRevision() {
+  const state = useProjectStore.getState();
+  if (!state.isOpen) return;
+  useProjectStore.setState({
+    isDirty: true,
+    revision: state.revision + 1,
+  });
+}
+
 function setupDirtyTracking() {
   if (subscriptionsActive) return;
   subscriptionsActive = true;
 
-  const markDirty = () => {
-    const state = useProjectStore.getState();
-    if (state.isOpen && !state.isDirty) {
-      useProjectStore.setState({ isDirty: true });
-    }
-  };
+  const markDirty = bumpRevision;
 
   // Watch canvas store for image changes
   useCanvasStore.subscribe((state, prevState) => {
@@ -102,12 +125,21 @@ function setupDirtyTracking() {
     }
   });
 
-  // Watch crop store for the committed aspect ratio (persisted in the
-  // project file's `crop` field)
+  // Watch the crop store. All three fields are persisted in the project
+  // file's `crop` block — including an in-progress selection — so moving or
+  // resizing a crop rect is a real content change, not just transient UI.
   let prevAspectRatio = useCropStore.getState().aspectRatio;
+  let prevIsCropping = useCropStore.getState().isCropping;
+  let prevCropRect = useCropStore.getState().cropRect;
   useCropStore.subscribe((state) => {
-    if (state.aspectRatio !== prevAspectRatio) {
+    if (
+      state.aspectRatio !== prevAspectRatio ||
+      state.isCropping !== prevIsCropping ||
+      state.cropRect !== prevCropRect
+    ) {
       prevAspectRatio = state.aspectRatio;
+      prevIsCropping = state.isCropping;
+      prevCropRect = state.cropRect;
       markDirty();
     }
   });
@@ -143,15 +175,21 @@ export const useProjectStore = create<ProjectState>(() => {
     filePath: null,
     isDirty: false,
     isOpen: false,
+    revision: 0,
 
-    markDirty: () => {
-      const state = useProjectStore.getState();
-      if (state.isOpen && !state.isDirty) {
-        useProjectStore.setState({ isDirty: true });
-      }
-    },
+    markDirty: bumpRevision,
 
     markClean: () => useProjectStore.setState({ isDirty: false }),
+
+    // A brand-new capture/paste/drop is an unsaved document, not "no
+    // document". It starts clean (nothing has been edited yet) but open, so
+    // any subsequent edit marks it dirty and gets a discard prompt.
+    startUntitledProject: () =>
+      useProjectStore.setState({
+        filePath: null,
+        isDirty: false,
+        isOpen: true,
+      }),
 
     openProject: (path: string) =>
       useProjectStore.setState({
