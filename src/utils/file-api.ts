@@ -134,6 +134,15 @@ export async function readDroppedImage(path: string): Promise<Uint8Array> {
 }
 
 /**
+ * Retrieve a .bshot file path that was passed to the app at launch via OS
+ * file association (double-click, Open With, CLI argument). Returns null if
+ * no startup file is pending. Consumes the value — a second call returns null.
+ */
+export async function getStartupFile(): Promise<string | null> {
+  return await invoke<string | null>('get_startup_file');
+}
+
+/**
  * Tell the backend no project is open anymore, so `delete_file` (which only
  * trusts the tracked active project path) can no longer act on the
  * previously-open project's file.

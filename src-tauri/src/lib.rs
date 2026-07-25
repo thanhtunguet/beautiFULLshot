@@ -4,9 +4,35 @@
 use std::sync::atomic::AtomicBool;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use tauri::{Emitter, WindowEvent};
 #[cfg(target_os = "macos")]
 use tauri::{Manager, RunEvent};
+
+/// Path of a .bshot file passed to the app at launch (CLI arg on Windows/Linux,
+/// Apple Events on macOS). The frontend reads this once via get_startup_file()
+/// after it is ready. Wrapped in Mutex so it is safe to write from the run()
+/// event loop and read from a Tauri command on any thread.
+static STARTUP_FILE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Store a file path if it is a .bshot file that exists on disk.
+fn store_startup_file(path: &str) {
+    if path.ends_with(".bshot") && std::path::Path::new(path).exists() {
+        if let Ok(mut guard) = STARTUP_FILE.lock() {
+            *guard = Some(path.to_owned());
+        }
+    }
+}
+
+/// Called by the frontend once it is ready. Consumes and returns the startup
+/// file path (if any), so a second call returns None.
+#[tauri::command]
+fn get_startup_file() -> Option<String> {
+    STARTUP_FILE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+}
 
 #[cfg(target_os = "macos")]
 use tauri::menu::{
@@ -163,6 +189,14 @@ pub fn run() {
             // Note: Overlay window is created on-demand when needed
             // to avoid fullscreen white screen at startup
 
+            // Check CLI arguments for a .bshot file path (Windows / Linux
+            // file-association launch, or manual `beautyfullshot file.bshot`).
+            // On macOS, fresh-launch file-open events arrive via RunEvent::Opened
+            // below instead of as CLI args.
+            for arg in std::env::args().skip(1) {
+                store_startup_file(&arg);
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -223,6 +257,7 @@ pub fn run() {
             file_ops::read_dropped_project,
             file_ops::read_dropped_image,
             file_ops::clear_active_project,
+            get_startup_file,
             shortcuts::update_shortcuts,
             overlay::create_overlay_window,
             overlay::close_overlay_window,
@@ -257,6 +292,39 @@ pub fn run() {
 
                     // Hide from dock
                     let _ = _app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
+
+                // Handle macOS file-open Apple Event (triggered when a .bshot
+                // file is double-clicked, dragged onto the dock icon, or
+                // opened with "Open With"). Fires for both a fresh launch and
+                // an already-running instance.
+                RunEvent::Opened { urls } => {
+                    for url in urls {
+                        if url.scheme() == "file" {
+                            if let Ok(path) = url.to_file_path() {
+                                let path_str = path.to_string_lossy().into_owned();
+                                if path_str.ends_with(".bshot") {
+                                    // Always store so get_startup_file() works
+                                    // if the webview is not yet ready.
+                                    store_startup_file(&path_str);
+
+                                    if let Some(window) = _app.get_webview_window("main") {
+                                        // The app may be sitting as a tray icon
+                                        // (ActivationPolicy::Accessory, window hidden).
+                                        // Bring it back before delivering the event.
+                                        #[cfg(target_os = "macos")]
+                                        let _ = _app.set_activation_policy(
+                                            tauri::ActivationPolicy::Regular,
+                                        );
+                                        let _ = window.show();
+                                        let _ = window.unminimize();
+                                        let _ = window.set_focus();
+                                        let _ = window.emit("file-open-requested", &path_str);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Handle macOS dock click to reopen window

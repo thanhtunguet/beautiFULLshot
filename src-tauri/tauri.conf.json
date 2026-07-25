@@ -66,6 +66,15 @@
         "type": "downloadBootstrapper"
       }
     },
+    "fileAssociations": [
+      {
+        "ext": ["bshot"],
+        "name": "BeautyFullShot Project",
+        "description": "BeautyFullShot project file",
+        "mimeType": "application/x-bshot",
+        "role": "Editor"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "11.0",
       "entitlements": "entitlements.plist",
