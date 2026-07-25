@@ -166,8 +166,8 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Intercept close request on main window - hide instead of quit
             if window.label() == "main" {
+                // Intercept close request on main window - hide instead of quit
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     // Prevent default close behavior
                     api.prevent_close();
@@ -180,6 +180,21 @@ pub fn run() {
                         let app = window.app_handle();
                         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                     }
+                }
+
+                // On macOS, the window can be re-shown from several places
+                // (global capture hotkeys, the region-overlay flow, tray/dock)
+                // via plain window.show()/setFocus() calls from the frontend,
+                // none of which restore ActivationPolicy::Regular. Leaving the
+                // app in Accessory mode while its window is frontmost causes
+                // the native app menu (File/Edit/Window) to become unresponsive
+                // to clicks. Self-heal centrally whenever the main window
+                // regains focus, instead of relying on every show-path to
+                // remember to restore the policy.
+                #[cfg(target_os = "macos")]
+                if let WindowEvent::Focused(true) = event {
+                    let app = window.app_handle();
+                    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
                 }
             }
         })
