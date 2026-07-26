@@ -355,7 +355,7 @@ describe('loadImageAsNewCanvas', () => {
     });
     useUnsavedChangesStore.getState().resolve('cancel');
 
-    await expect(pending).resolves.toBe(false);
+    await expect(pending).resolves.toBe('cancelled');
     expect(ran).toBe(false);
   });
 });
@@ -372,7 +372,7 @@ describe('guardedProjectTransition error handling', () => {
       throw new Error('Project file is missing project.json');
     });
 
-    expect(result).toBe(false);
+    expect(result).toBe('failed');
     const errorToast = useToastStore
       .getState()
       .toasts.find((t) => t.type === 'error');
@@ -384,6 +384,41 @@ describe('guardedProjectTransition error handling', () => {
       throw new Error('boom');
     });
 
-    await expect(guardedProjectTransition(async () => {})).resolves.toBe(true);
+    await expect(guardedProjectTransition(async () => {})).resolves.toBe(
+      'completed'
+    );
+  });
+
+  it('reports being busy instead of silently doing nothing', async () => {
+    // Regression: a drop or open arriving while a modal held the lock
+    // returned false with no toast, which looked exactly like a dead click.
+    let ran = false;
+    const first = guardedProjectTransition(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const second = await guardedProjectTransition(async () => {
+      ran = true;
+    });
+
+    expect(second).toBe('busy');
+    expect(ran).toBe(false);
+    const errorToast = useToastStore
+      .getState()
+      .toasts.find((t) => t.type === 'error');
+    expect(errorToast?.title).toBe('Busy');
+
+    await first;
+  });
+
+  it('stays quiet when the user cancels', async () => {
+    // Cancel is the guard working as intended, not a failure — no toast.
+    useProjectStore.setState({ isDirty: true, isOpen: true });
+
+    const pending = guardedProjectTransition(async () => {});
+    useUnsavedChangesStore.getState().resolve('cancel');
+
+    await expect(pending).resolves.toBe('cancelled');
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 });

@@ -11,7 +11,7 @@ import { WindowPickerModal } from '../capture/window-picker-modal';
 import { MonitorPickerModal } from '../capture/monitor-picker-modal';
 import { useUIStore } from '../../stores/ui-store';
 import { logError } from '../../utils/logger';
-import { readDroppedProject, readDroppedImage } from '../../utils/file-api';
+import { readDroppedProject, readDroppedImage, revokePathGrants } from '../../utils/file-api';
 import {
   guardedProjectTransition,
   loadImageAsNewCanvas,
@@ -21,7 +21,19 @@ import {
 } from '../../utils/project-io';
 import { toast } from '../../stores/toast-store';
 
-const IMAGE_EXTENSION_RE = /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i;
+/**
+ * Payload of the Rust-side `files-dropped` event (see lib.rs FilesDropped).
+ *
+ * Which extensions are droppable is decided in Rust, against the same
+ * allowlists the read commands enforce — the frontend used to keep its own
+ * regex, which accepted `.svg`/`.ico`/`.tiff` that the backend then rejected
+ * with a confusing error.
+ */
+interface FilesDroppedPayload {
+  path: string | null;
+  ignored: number;
+  unsupported: boolean;
+}
 
 export function EditorLayout() {
   const { isWindowPickerOpen, closeWindowPicker, isMonitorPickerOpen, closeMonitorPicker } = useUIStore();
@@ -94,19 +106,30 @@ export function EditorLayout() {
     return () => unlisten?.();
   }, []);
 
-  // Open a file the OS dropped on the window. Emitted by the Rust drag-drop
-  // handler after it has recorded a one-use read grant for each path, so
-  // these reads are the only ones the backend will honor.
+  // Open a file the OS dropped on the window. Rust classifies the drop, grants
+  // a one-use read for the single path it selected, and emits this event —
+  // so the path here is always one the backend will honor.
   useEffect(() => {
-    const unlisten = listen<string[]>('files-dropped', (event) => {
-      const path = event.payload[0];
+    const unlisten = listen<FilesDroppedPayload>('files-dropped', async (event) => {
+      const { path, ignored, unsupported } = event.payload;
+
+      if (unsupported) {
+        toast.error('Open Failed', 'Unsupported file type.');
+        return;
+      }
       if (!path) return;
 
-      const isProject = path.toLowerCase().endsWith('.bshot');
-      const isImage = IMAGE_EXTENSION_RE.test(path);
+      if (ignored > 0) {
+        toast.info(
+          'Opened One File',
+          `${ignored} other file${ignored === 1 ? '' : 's'} ignored — only one can be opened at a time.`
+        );
+      }
 
-      if (isProject) {
-        void guardedProjectTransition(async () => {
+      const isProject = path.toLowerCase().endsWith('.bshot');
+
+      const outcome = await guardedProjectTransition(async () => {
+        if (isProject) {
           const result = await readDroppedProject(path);
           await openProjectFromData(
             path,
@@ -114,14 +137,17 @@ export function EditorLayout() {
             result.screenshotBytes,
             result.backgroundImageBytes
           );
-        });
-      } else if (isImage) {
-        void guardedProjectTransition(async () => {
+        } else {
           const bytes = await readDroppedImage(path);
           await openImageFromBytes(path, bytes);
-        });
-      } else {
-        toast.error('Open Failed', 'Unsupported file type.');
+        }
+      });
+
+      // The read only happens on the 'completed' path. Anything else leaves
+      // the grant Rust issued unredeemed, so hand it back rather than letting
+      // it sit there until it times out.
+      if (outcome !== 'completed') {
+        await revokePathGrants([path]);
       }
     });
 

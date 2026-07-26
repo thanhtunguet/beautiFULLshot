@@ -29,7 +29,21 @@ jobs:
         run: npx tsc --noEmit
 
   build-check:
-    runs-on: ubuntu-24.04
+    # Built on both platforms because large parts of the app are
+    # `#[cfg(target_os = "macos")]` — the native menu, the file-association
+    # Apple Event handler, the activation-policy handling. A Linux-only job
+    # never compiles any of it, and a macOS-only job never compiles the
+    # `cfg(not(macos))` side. Either alone lets a platform-gated compile error
+    # reach main.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-14
+            platform: macos
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,8 +64,10 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          key: ${{ matrix.platform }}
 
       - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           # libgbm-dev: required by xcap for screen capture

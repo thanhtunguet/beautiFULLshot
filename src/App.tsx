@@ -21,7 +21,7 @@ import { useToastStore } from "./stores/toast-store";
 import { useProjectStore } from "./stores/project-store";
 import { releaseTransitionLock } from "./utils/project-io";
 import { openProjectFromData, guardedProjectTransition } from "./utils/project-io";
-import { getStartupFile, readDroppedProject } from "./utils/file-api";
+import { getStartupFile, readDroppedProject, revokePathGrants } from "./utils/file-api";
 import { listen } from "@tauri-apps/api/event";
 import type { ThemeMode } from "./stores/settings-store";
 
@@ -108,7 +108,7 @@ function App() {
   // get_startup_file) and for already-running opens on macOS (via the
   // file-open-requested event emitted by RunEvent::Opened in lib.rs).
   const openFileByPath = useCallback(async (path: string) => {
-    await guardedProjectTransition(async () => {
+    const outcome = await guardedProjectTransition(async () => {
       const data = await readDroppedProject(path);
       await openProjectFromData(
         path,
@@ -117,12 +117,23 @@ function App() {
         data.backgroundImageBytes
       );
     });
+
+    // The read grant Rust issued for this path is only consumed when the open
+    // actually runs. Return it otherwise, rather than leaving an unredeemed
+    // authorization outstanding.
+    if (outcome !== 'completed') {
+      await revokePathGrants([path]);
+    }
   }, []);
 
   useEffect(() => {
     if (appState !== 'ready') return;
 
-    // Check for a file passed at launch time (consumed once; returns null on re-check)
+    // Check for a file passed at launch time. Consumed once (a re-check
+    // returns null), and Rust issues the read grant at this moment rather
+    // than at launch — so a session that sits on the permissions screen and
+    // never reaches 'ready' simply leaves the path unclaimed, with no grant
+    // outstanding and nothing to clean up.
     getStartupFile().then((path) => {
       if (path) openFileByPath(path);
     });
@@ -136,6 +147,7 @@ function App() {
       unlisten.then((fn) => fn());
     };
   }, [appState, openFileByPath]);
+
 
   // Apply dark mode class to document
   useEffect(() => {

@@ -11,7 +11,13 @@ import { useHistoryStore } from '../stores/history-store';
 import { useProjectStore } from '../stores/project-store';
 import { useUnsavedChangesStore } from '../stores/unsaved-changes-store';
 import { toast } from '../stores/toast-store';
-import { writeProject, clearActiveProject, getProjectDir, normalizePath } from './file-api';
+import {
+  writeProject,
+  clearActiveProject,
+  setActiveProject,
+  getProjectDir,
+  normalizePath,
+} from './file-api';
 import { getImageFromDB } from './image-db';
 import { logError } from './logger';
 import { GRADIENT_PRESETS } from '../data/gradients';
@@ -60,20 +66,37 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 }
 
 /**
+ * Why a guarded transition didn't run its action.
+ *
+ * `busy` and `cancelled` are distinct from `failed` because only the last is
+ * an error: the first two are the guard working as intended. Callers need the
+ * distinction to decide whether to say anything to the user — a silent `busy`
+ * looks identical to a dead click.
+ */
+export type TransitionOutcome = 'completed' | 'busy' | 'cancelled' | 'failed';
+
+/**
  * Run `action` as a guarded transition: acquires the shared lock, prompts
  * to save/discard if the current project is dirty, then runs `action`.
- * Returns `false` without running `action` if another transition is
- * already in flight or the user cancels the prompt.
+ *
+ * Reports why it stopped rather than a bare boolean, and raises a toast for
+ * `busy` and `failed` so no entry point can silently do nothing. `cancelled`
+ * is deliberately quiet — the user just chose Cancel and needs no toast.
  */
 export async function guardedProjectTransition(
   action: () => Promise<void>
-): Promise<boolean> {
-  if (!tryAcquireTransitionLock()) return false;
+): Promise<TransitionOutcome> {
+  if (!tryAcquireTransitionLock()) {
+    // Previously this returned silently, so dropping a file or opening a
+    // project while any modal was up appeared to do nothing at all.
+    toast.error('Busy', 'Please finish the current action first.');
+    return 'busy';
+  }
   try {
     const proceed = await confirmDiscardIfDirty();
-    if (!proceed) return false;
+    if (!proceed) return 'cancelled';
     await action();
-    return true;
+    return 'completed';
   } catch (e) {
     // Every project-replacing entry point funnels through here, so this is
     // the one place that has to surface a failure. Without it, a rejected
@@ -82,7 +105,7 @@ export async function guardedProjectTransition(
     logError('guardedProjectTransition', e);
     const message = e instanceof Error ? e.message : String(e);
     toast.error('Open Failed', message);
-    return false;
+    return 'failed';
   } finally {
     releaseTransitionLock();
   }
@@ -521,6 +544,11 @@ export async function openProjectFromData(
 
     restoreProjectFromData(metadata, bytes, bgBytes);
     useProjectStore.getState().openProject(path);
+
+    // Only now does the project become the backend's delete target. Reading
+    // it did not confer that authority, so a restore that threw above leaves
+    // the previously-open project as the delete target instead of this one.
+    await setActiveProject(path);
 
     const displayPath = normalizePath(path);
     toast.success(

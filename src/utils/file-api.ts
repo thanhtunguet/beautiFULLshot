@@ -150,3 +150,36 @@ export async function getStartupFile(): Promise<string | null> {
 export async function clearActiveProject(): Promise<void> {
   await invoke('clear_active_project');
 }
+
+/**
+ * Promote the just-opened project to the backend's *active* project, which is
+ * what `delete_file` will act on.
+ *
+ * Reading a project no longer confers delete authority on its own — this is
+ * the separate, explicit step, and Rust only honors it for the file it most
+ * recently read. Call it after the project has been restored into the editor,
+ * so a failed restore leaves the previous project as the delete target rather
+ * than a half-opened one.
+ */
+export async function setActiveProject(path: string): Promise<void> {
+  await invoke('set_active_project', { path });
+}
+
+/**
+ * Release read authorizations the app was handed but did not use.
+ *
+ * Rust grants a one-use read when the OS offers a file (drop, file
+ * association). If the open doesn't happen — the user cancelled the
+ * unsaved-changes prompt, a modal held the transition lock, the archive was
+ * malformed — the grant would otherwise stay redeemable until it times out.
+ * Best-effort and idempotent, so it is safe to call unconditionally in a
+ * `finally`.
+ */
+export async function revokePathGrants(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  try {
+    await invoke('revoke_path_grants', { paths });
+  } catch {
+    // Never mask the original failure — grants expire on their own anyway.
+  }
+}
