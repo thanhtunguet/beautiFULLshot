@@ -4,7 +4,10 @@ import {
   restoreProjectFromData,
   confirmDiscardIfDirty,
   saveProject,
+  loadImageAsNewCanvas,
+  guardedProjectTransition,
 } from '../project-io';
+import { useToastStore } from '../../stores/toast-store';
 import { useCanvasStore } from '../../stores/canvas-store';
 import { useAnnotationStore } from '../../stores/annotation-store';
 import { useBackgroundStore } from '../../stores/background-store';
@@ -60,7 +63,13 @@ function resetAllStores() {
     outputAspectRatio: 'auto',
   });
   useCropStore.setState({ isCropping: false, cropRect: null, aspectRatio: null });
-  useProjectStore.setState({ filePath: null, isDirty: false, isOpen: false });
+  useProjectStore.setState({
+    filePath: null,
+    isDirty: false,
+    isOpen: false,
+    revision: 0,
+  });
+  useToastStore.getState().clearToasts();
 }
 
 describe('project-io round trip', () => {
@@ -151,6 +160,50 @@ describe('project-io round trip', () => {
     expect(useCropStore.getState().aspectRatio).toBeCloseTo(16 / 9);
   });
 
+  it('round-trips an active crop selection', () => {
+    // Regression: only aspectRatio was persisted, so reopening a project
+    // saved mid-crop showed the uncropped image with the selection gone.
+    const rect = { x: 12, y: 34, width: 200, height: 150 };
+    useCropStore.getState().startCrop(4 / 3);
+    useCropStore.getState().setCropRect(rect);
+
+    const metadata = buildProjectMetadata(false);
+    expect(metadata.crop?.isCropping).toBe(true);
+    expect(metadata.crop?.cropRect).toEqual(rect);
+
+    useCropStore.getState().clearCrop();
+    restoreProjectFromData(metadata, SCREENSHOT_BYTES, null);
+
+    const crop = useCropStore.getState();
+    expect(crop.isCropping).toBe(true);
+    expect(crop.cropRect).toEqual(rect);
+    expect(crop.aspectRatio).toBeCloseTo(4 / 3);
+  });
+
+  it('restores no active selection from a file saved without one', () => {
+    useCropStore.getState().setAspectRatio(1);
+    const metadata = buildProjectMetadata(false);
+
+    useCropStore.getState().startCrop();
+    useCropStore.getState().setCropRect({ x: 1, y: 1, width: 9, height: 9 });
+    restoreProjectFromData(metadata, SCREENSHOT_BYTES, null);
+
+    expect(useCropStore.getState().isCropping).toBe(false);
+    expect(useCropStore.getState().cropRect).toBeNull();
+  });
+
+  it('treats a v1 file with no crop block as having no selection', () => {
+    const metadata = buildProjectMetadata(false);
+    delete (metadata as { crop?: unknown }).crop;
+
+    useCropStore.getState().startCrop();
+    useCropStore.getState().setCropRect({ x: 1, y: 1, width: 9, height: 9 });
+    restoreProjectFromData(metadata, SCREENSHOT_BYTES, null);
+
+    expect(useCropStore.getState().isCropping).toBe(false);
+    expect(useCropStore.getState().cropRect).toBeNull();
+  });
+
   it('round-trips the number-annotation counter', () => {
     useAnnotationStore.setState({
       annotations: [
@@ -234,5 +287,138 @@ describe('saveProject', () => {
     const result = await saveProject();
     expect(result).toBe(true);
     expect(useProjectStore.getState().filePath).toBe('/existing/project.bshot');
+  });
+
+  it('marks the project clean when nothing changed during the write', async () => {
+    useProjectStore.setState({ filePath: '/existing/project.bshot', isOpen: true, isDirty: true });
+
+    await saveProject();
+
+    expect(useProjectStore.getState().isDirty).toBe(false);
+  });
+
+  it('stays dirty when the document is edited mid-save', async () => {
+    // Regression: the write snapshots the document, awaits, then used to
+    // clear isDirty unconditionally — so an edit made during the await was
+    // absent from disk but displayed as saved.
+    useProjectStore.setState({ filePath: '/existing/project.bshot', isOpen: true, isDirty: true });
+
+    const { writeProject } = await import('../file-api');
+    vi.mocked(writeProject).mockImplementationOnce(async (path: string) => {
+      // Simulate the user editing while the write is in flight.
+      useExportStore.getState().setQuality(0.42);
+      return path;
+    });
+
+    const result = await saveProject();
+
+    expect(result).toBe(true);
+    expect(useProjectStore.getState().isDirty).toBe(true);
+    // The path still updates — the file does exist, it's just behind.
+    expect(useProjectStore.getState().filePath).toBe('/existing/project.bshot');
+  });
+});
+
+describe('loadImageAsNewCanvas', () => {
+  beforeEach(() => {
+    resetAllStores();
+  });
+
+  it('leaves an untitled but open document', async () => {
+    await loadImageAsNewCanvas(new Uint8Array([9, 9]), 50, 40);
+
+    const state = useProjectStore.getState();
+    expect(state.isOpen).toBe(true);
+    expect(state.filePath).toBeNull();
+    expect(state.isDirty).toBe(false);
+  });
+
+  it('detaches from the previously open project', async () => {
+    // Otherwise the next Save would overwrite that project with this image.
+    useProjectStore.getState().openProject('/old/project.bshot');
+
+    await loadImageAsNewCanvas(new Uint8Array([9, 9]), 50, 40);
+
+    expect(useProjectStore.getState().filePath).toBeNull();
+  });
+
+  it('protects subsequent edits to the new canvas', async () => {
+    await loadImageAsNewCanvas(new Uint8Array([9, 9]), 50, 40);
+
+    useExportStore.getState().setQuality(0.33);
+    expect(useProjectStore.getState().isDirty).toBe(true);
+
+    // A further transition must now prompt rather than silently discard.
+    let ran = false;
+    const pending = guardedProjectTransition(async () => {
+      ran = true;
+    });
+    useUnsavedChangesStore.getState().resolve('cancel');
+
+    await expect(pending).resolves.toBe('cancelled');
+    expect(ran).toBe(false);
+  });
+});
+
+describe('guardedProjectTransition error handling', () => {
+  beforeEach(() => {
+    resetAllStores();
+  });
+
+  it('reports a failing action instead of swallowing it', async () => {
+    // Regression: open/drop failures (bad version, malformed archive, I/O
+    // errors) rejected into the void and the user saw nothing happen.
+    const result = await guardedProjectTransition(async () => {
+      throw new Error('Project file is missing project.json');
+    });
+
+    expect(result).toBe('failed');
+    const errorToast = useToastStore
+      .getState()
+      .toasts.find((t) => t.type === 'error');
+    expect(errorToast?.message).toBe('Project file is missing project.json');
+  });
+
+  it('releases the lock after a failure so the next attempt can run', async () => {
+    await guardedProjectTransition(async () => {
+      throw new Error('boom');
+    });
+
+    await expect(guardedProjectTransition(async () => {})).resolves.toBe(
+      'completed'
+    );
+  });
+
+  it('reports being busy instead of silently doing nothing', async () => {
+    // Regression: a drop or open arriving while a modal held the lock
+    // returned false with no toast, which looked exactly like a dead click.
+    let ran = false;
+    const first = guardedProjectTransition(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const second = await guardedProjectTransition(async () => {
+      ran = true;
+    });
+
+    expect(second).toBe('busy');
+    expect(ran).toBe(false);
+    const errorToast = useToastStore
+      .getState()
+      .toasts.find((t) => t.type === 'error');
+    expect(errorToast?.title).toBe('Busy');
+
+    await first;
+  });
+
+  it('stays quiet when the user cancels', async () => {
+    // Cancel is the guard working as intended, not a failure — no toast.
+    useProjectStore.setState({ isDirty: true, isOpen: true });
+
+    const pending = guardedProjectTransition(async () => {});
+    useUnsavedChangesStore.getState().resolve('cancel');
+
+    await expect(pending).resolves.toBe('cancelled');
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 });

@@ -17,7 +17,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -29,7 +29,21 @@ jobs:
         run: npx tsc --noEmit
 
   build-check:
-    runs-on: ubuntu-24.04
+    # Built on both platforms because large parts of the app are
+    # `#[cfg(target_os = "macos")]` — the native menu, the file-association
+    # Apple Event handler, the activation-policy handling. A Linux-only job
+    # never compiles any of it, and a macOS-only job never compiles the
+    # `cfg(not(macos))` side. Either alone lets a platform-gated compile error
+    # reach main.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-14
+            platform: macos
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,12 +52,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      # Pinned to the declared MSRV (src-tauri/Cargo.toml rust-version)
+      # rather than `stable`, so a dependency bump that raises the real
+      # minimum fails here instead of silently invalidating the documented
+      # requirement.
+      - name: Setup Rust (MSRV)
+        uses: dtolnay/rust-toolchain@1.85.0
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: ${{ matrix.platform }}
 
       - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           # libgbm-dev: required by xcap for screen capture
@@ -64,9 +88,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
-
-      - name: Check Rust compilation
+      - name: Run Rust tests
         working-directory: src-tauri
-        run: cargo check
+        run: cargo test
+
+      # A real bundle, not `cargo check`. The Tauri CLI verifies that the
+      # npm @tauri-apps/* versions and the Rust crate versions agree on
+      # major.minor and aborts if they don't — a mismatch `cargo check`
+      # cannot see. Bundling is skipped since only the build needs verifying.
+      - name: Tauri build
+        run: npx tauri build --no-bundle

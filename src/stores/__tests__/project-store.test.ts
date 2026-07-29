@@ -10,6 +10,7 @@ beforeEach(() => {
     filePath: null,
     isDirty: false,
     isOpen: false,
+    revision: 0,
   });
   useBackgroundStore.setState({
     wallpaper: null,
@@ -142,6 +143,82 @@ describe('project-store', () => {
     it('marks dirty when the committed crop aspect ratio changes', () => {
       useCropStore.getState().setAspectRatio(1);
       expect(useProjectStore.getState().isDirty).toBe(true);
+    });
+
+    it('marks dirty when a crop selection is started', () => {
+      useCropStore.getState().startCrop();
+      expect(useProjectStore.getState().isDirty).toBe(true);
+    });
+
+    it('marks dirty when the crop rect is moved or resized', () => {
+      useCropStore.getState().startCrop();
+      useProjectStore.getState().markClean();
+
+      useCropStore.getState().setCropRect({ x: 5, y: 5, width: 50, height: 40 });
+      expect(useProjectStore.getState().isDirty).toBe(true);
+    });
+  });
+
+  describe('untitled documents', () => {
+    it('starts open with no path and clean', () => {
+      useProjectStore.getState().startUntitledProject();
+
+      const state = useProjectStore.getState();
+      expect(state.isOpen).toBe(true);
+      expect(state.filePath).toBeNull();
+      expect(state.isDirty).toBe(false);
+    });
+
+    it('becomes dirty when edited, so its work is protected', () => {
+      // Regression: dirty tracking used to require a filePath, so edits to a
+      // fresh capture/paste/drop never registered and a later transition
+      // discarded them with no prompt.
+      useProjectStore.getState().startUntitledProject();
+
+      useExportStore.getState().setQuality(0.5);
+
+      expect(useProjectStore.getState().isDirty).toBe(true);
+      expect(useProjectStore.getState().filePath).toBeNull();
+    });
+
+    it('ignores edits once closed', () => {
+      useProjectStore.getState().startUntitledProject();
+      useProjectStore.getState().closeProject();
+
+      useExportStore.getState().setQuality(0.4);
+
+      expect(useProjectStore.getState().isDirty).toBe(false);
+    });
+  });
+
+  describe('revision counter', () => {
+    it('advances on every tracked change', () => {
+      useProjectStore.getState().openProject('/some/project.bshot');
+      const start = useProjectStore.getState().revision;
+
+      useExportStore.getState().setQuality(0.5);
+      useExportStore.getState().setPixelRatio(3);
+
+      expect(useProjectStore.getState().revision).toBe(start + 2);
+    });
+
+    it('advances even while already dirty', () => {
+      // The counter has to keep moving after the first edit — otherwise a
+      // save can't tell "edited during the write" from "unchanged".
+      useProjectStore.getState().openProject('/some/project.bshot');
+      useExportStore.getState().setQuality(0.5);
+
+      const afterFirst = useProjectStore.getState().revision;
+      expect(useProjectStore.getState().isDirty).toBe(true);
+
+      useExportStore.getState().setPixelRatio(3);
+      expect(useProjectStore.getState().revision).toBe(afterFirst + 1);
+    });
+
+    it('does not advance when no document is open', () => {
+      const start = useProjectStore.getState().revision;
+      useExportStore.getState().setQuality(0.5);
+      expect(useProjectStore.getState().revision).toBe(start);
     });
   });
 });

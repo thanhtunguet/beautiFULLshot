@@ -11,7 +11,13 @@ import { useHistoryStore } from '../stores/history-store';
 import { useProjectStore } from '../stores/project-store';
 import { useUnsavedChangesStore } from '../stores/unsaved-changes-store';
 import { toast } from '../stores/toast-store';
-import { writeProject, clearActiveProject, getProjectDir, normalizePath } from './file-api';
+import {
+  writeProject,
+  clearActiveProject,
+  setActiveProject,
+  getProjectDir,
+  normalizePath,
+} from './file-api';
 import { getImageFromDB } from './image-db';
 import { logError } from './logger';
 import { GRADIENT_PRESETS } from '../data/gradients';
@@ -60,20 +66,46 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 }
 
 /**
+ * Why a guarded transition didn't run its action.
+ *
+ * `busy` and `cancelled` are distinct from `failed` because only the last is
+ * an error: the first two are the guard working as intended. Callers need the
+ * distinction to decide whether to say anything to the user — a silent `busy`
+ * looks identical to a dead click.
+ */
+export type TransitionOutcome = 'completed' | 'busy' | 'cancelled' | 'failed';
+
+/**
  * Run `action` as a guarded transition: acquires the shared lock, prompts
  * to save/discard if the current project is dirty, then runs `action`.
- * Returns `false` without running `action` if another transition is
- * already in flight or the user cancels the prompt.
+ *
+ * Reports why it stopped rather than a bare boolean, and raises a toast for
+ * `busy` and `failed` so no entry point can silently do nothing. `cancelled`
+ * is deliberately quiet — the user just chose Cancel and needs no toast.
  */
 export async function guardedProjectTransition(
   action: () => Promise<void>
-): Promise<boolean> {
-  if (!tryAcquireTransitionLock()) return false;
+): Promise<TransitionOutcome> {
+  if (!tryAcquireTransitionLock()) {
+    // Previously this returned silently, so dropping a file or opening a
+    // project while any modal was up appeared to do nothing at all.
+    toast.error('Busy', 'Please finish the current action first.');
+    return 'busy';
+  }
   try {
     const proceed = await confirmDiscardIfDirty();
-    if (!proceed) return false;
+    if (!proceed) return 'cancelled';
     await action();
-    return true;
+    return 'completed';
+  } catch (e) {
+    // Every project-replacing entry point funnels through here, so this is
+    // the one place that has to surface a failure. Without it, a rejected
+    // version gate, a malformed archive, or an I/O error from the Rust side
+    // would be swallowed and the user would see nothing happen at all.
+    logError('guardedProjectTransition', e);
+    const message = e instanceof Error ? e.message : String(e);
+    toast.error('Open Failed', message);
+    return 'failed';
   } finally {
     releaseTransitionLock();
   }
@@ -120,10 +152,24 @@ export async function saveProject(): Promise<boolean> {
       if (!savePath) return false;
     }
 
+    // Snapshot the document revision alongside the content itself. Anything
+    // the user edits while the write is in flight bumps the revision, and
+    // must leave the project dirty — the bytes on disk predate that edit.
+    const revisionAtSnapshot = useProjectStore.getState().revision;
     const data = await buildProjectSaveData();
     const savedPath = await writeProject(savePath, data);
     const displayPath = normalizePath(savedPath);
-    useProjectStore.getState().setFilePath(displayPath);
+
+    const store = useProjectStore.getState();
+    if (store.revision === revisionAtSnapshot) {
+      store.setFilePath(displayPath);
+    } else {
+      // Record where the project now lives without claiming it is clean.
+      useProjectStore.setState({
+        filePath: displayPath,
+        isOpen: true,
+      });
+    }
 
     toast.success(
       'Saved',
@@ -221,7 +267,14 @@ export function buildProjectMetadata(hasCustomImage: boolean): ProjectMetadata {
       pixelRatio: exportSettings.pixelRatio,
       outputAspectRatio: exportSettings.outputAspectRatio,
     },
-    crop: { aspectRatio: crop.aspectRatio },
+    crop: {
+      aspectRatio: crop.aspectRatio,
+      // An active (drawn but not yet applied) selection is part of what the
+      // user sees, so it round-trips too — otherwise reopening shows the
+      // uncropped image with the selection silently gone.
+      isCropping: crop.isCropping,
+      cropRect: crop.cropRect,
+    },
     numberCounter,
   };
 }
@@ -363,9 +416,14 @@ export function restoreProjectFromData(
   bgActions.setBorderColor(bg.borderColor);
   bgActions.setBorderOpacity(bg.borderOpacity);
 
-  // Restore crop
+  // Restore crop, including an in-progress selection. Set as one state
+  // update rather than via startCrop(), which resets cropRect to null.
   if (metadata.crop) {
-    cropStore.setAspectRatio(metadata.crop.aspectRatio);
+    useCropStore.setState({
+      aspectRatio: metadata.crop.aspectRatio,
+      isCropping: metadata.crop.isCropping ?? false,
+      cropRect: metadata.crop.cropRect ?? null,
+    });
   }
 
   // Restore export settings
@@ -403,6 +461,10 @@ export async function closeProjectAndClearCanvas(): Promise<void> {
 /**
  * Detach from any currently-open project and load `bytes` as a brand-new,
  * unsaved canvas image.
+ *
+ * The result is an *untitled document*, not an absence of one: it has no
+ * file path, but it is open, so edits made to it mark it dirty and are
+ * protected by the same discard prompt as a saved project.
  */
 export async function loadImageAsNewCanvas(
   bytes: Uint8Array,
@@ -411,6 +473,9 @@ export async function loadImageAsNewCanvas(
 ): Promise<void> {
   await closeProjectAndClearCanvas();
   useCanvasStore.getState().setImageFromBytes(bytes, width, height);
+  // Marked open *after* the image lands so loading it doesn't itself count
+  // as an edit — the new document starts clean.
+  useProjectStore.getState().startUntitledProject();
   setTimeout(() => useCanvasStore.getState().fitToView(), 100);
 }
 
@@ -479,6 +544,11 @@ export async function openProjectFromData(
 
     restoreProjectFromData(metadata, bytes, bgBytes);
     useProjectStore.getState().openProject(path);
+
+    // Only now does the project become the backend's delete target. Reading
+    // it did not confer that authority, so a restore that threw above leaves
+    // the previously-open project as the delete target instead of this one.
+    await setActiveProject(path);
 
     const displayPath = normalizePath(path);
     toast.success(

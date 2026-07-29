@@ -635,10 +635,13 @@ fn get_project_dir() -> Result<String, String>                            // ~/P
 fn write_project(path, metadata, screenshot_bytes, background_image_bytes)
     -> Result<String, String>                                             // atomic .bshot write
 fn pick_and_open() -> Result<OpenPickResult, String>                       // Rust-owned Open dialog
-fn read_dropped_project(path: String) -> Result<ProjectData, String>      // drag-drop only
-fn read_dropped_image(path: String) -> Result<Vec<u8>, String>            // drag-drop only
+fn read_dropped_project(path: String) -> Result<ProjectData, String>      // requires a read grant
+fn read_dropped_image(path: String) -> Result<Vec<u8>, String>            // requires a read grant
 fn delete_file(path: String, move_to_trash: bool) -> Result<(), String>   // active-project only
+fn set_active_project(path: String) -> Result<(), String>                 // promotes last_read_project
+fn revoke_path_grants(paths: Vec<String>)                                 // hand back unused grants
 fn clear_active_project() -> Result<(), String>
+fn get_startup_file() -> Option<String>                                   // file-association launch
 ```
 See "Project File System (.bshot)" below for the security model behind this
 command set (why `read_binary_file`/`read_project` were removed in favor of
@@ -831,26 +834,70 @@ read or delete anything the OS user could access. Both are closed off:
 - **Open** (`pick_and_open`) shows the native file dialog **from Rust**
   (`tauri_plugin_dialog`'s `DialogExt`) and reads the chosen file in the same
   call. No path crosses the IPC boundary from JS for this flow at all.
-- **Drag-drop** (`read_dropped_project` / `read_dropped_image`) necessarily
-  still takes a path (it comes from the OS drag session, not a dialog Rust
-  owns), so it's hardened instead: canonicalized to resolve symlinks, must be
-  a regular file, and must match an extension allowlist before the bounded
-  ZIP reader touches it.
+- **Drag-drop and file association** (`read_dropped_project` /
+  `read_dropped_image`) take a path argument, but do not trust it. Rust
+  classifies the OS event itself (drag-drop handler in `lib.rs`,
+  `RunEvent::Opened`, CLI args), issues a **one-use read grant** for the
+  single path it selected, and only then tells the frontend about it. The
+  read commands consume a grant rather than trusting their argument, so a
+  path the renderer invented is rejected. Grants additionally expire
+  (`GRANT_TTL`, 60s), are capped (`MAX_PENDING_GRANTS`), and can be handed
+  back early via `revoke_path_grants` when an open doesn't happen. Reads are
+  still canonicalized, required to be a regular file, and extension-checked
+  before the bounded ZIP reader runs.
 - **Delete** (`delete_file`) only succeeds if the canonicalized path exactly
-  matches `AppState.active_project_path` — set only when a project is
-  actually opened or saved, and cleared on Close. The renderer cannot delete
-  a path it merely names.
+  matches `AppState.active_project_path`. The renderer cannot delete a path
+  it merely names.
+
+**Reading is not activation.** A read grant authorizes a read and nothing
+else — it never touches `active_project_path`. Opening a project is a two
+step handshake: the read records the path as `last_read_project` (Rust-side
+only), and the frontend calls `set_active_project` after the project has
+actually been restored into the editor. That command promotes *only*
+`last_read_project`, so the renderer chooses *whether* the project it just
+opened becomes deletable, never *which* path does. A leaked or replayed read
+grant therefore cannot escalate into a delete, and a restore that throws
+leaves the previously-open project as the delete target instead of a
+half-opened one.
+
+### Cross-platform surface
+
+The native menu (File / Edit / Window) is built on every desktop platform;
+only the macOS application submenu (About / Hide / Cmd+Q-to-tray) is
+`cfg`-gated, with those items folded into File elsewhere. File is the only
+route to Open / Export / Close / Delete, so gating it to macOS would leave
+Windows and Linux unable to open a project at all — and would make the
+`.bshot` file association registered on those platforms useless.
+
+CI builds `tauri build --no-bundle` on **both** Linux and macOS for this
+reason: a Linux-only job never compiles the `cfg(macos)` code, and a
+macOS-only job never compiles the `cfg(not(macos))` side.
 
 ### Data-loss prevention (frontend)
 
 Every flow that can replace the current project/canvas — Open, Close,
-Capture (fullscreen/region/window), Paste, and drag-drop — funnels through
-`guardedProjectTransition()` (`src/utils/project-io.ts`), which:
+Capture (fullscreen/region/window/toolbar), Paste, drag-drop, and
+file-association open — funnels through `guardedProjectTransition()`
+(`src/utils/project-io.ts`), which:
 1. acquires a shared lock (so two such transitions, or a transition and the
    Delete confirmation, can't interleave),
 2. prompts Save / Discard / Cancel if the project has unsaved changes
    (`UnsavedChangesModal`), aborting the transition on Cancel,
 3. only then runs the actual replacement.
+
+It reports a `TransitionOutcome` (`completed` / `busy` / `cancelled` /
+`failed`) rather than a bare boolean, and raises a toast for `busy` and
+`failed`. `cancelled` is deliberately silent. Callers use the outcome to
+revoke an unredeemed read grant when the open didn't happen.
+
+A fresh capture, paste, or dropped image is an **untitled document**: open
+with `filePath: null`. Dirty tracking keys on `isOpen` alone, so edits to an
+untitled document count as unsaved work and are protected by the same
+prompt as a saved project.
+
+`saveProject()` snapshots a monotonic `revision` before building the payload
+and only clears `isDirty` if the revision is unchanged after the write, so an
+edit made while the write is in flight is never reported as saved.
 
 `.bshot` saves (`write_project`) and plain file saves (`save_file`) write to
 a sibling temp file and `fs::rename` over the target, so a crash or

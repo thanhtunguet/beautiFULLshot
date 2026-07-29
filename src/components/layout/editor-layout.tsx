@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { listen } from '@tauri-apps/api/event';
 import { CanvasEditor } from '../canvas/canvas-editor';
 import { ZoomControls } from '../canvas/zoom-controls';
 import { Toolbar } from '../toolbar/toolbar';
@@ -10,7 +11,7 @@ import { WindowPickerModal } from '../capture/window-picker-modal';
 import { MonitorPickerModal } from '../capture/monitor-picker-modal';
 import { useUIStore } from '../../stores/ui-store';
 import { logError } from '../../utils/logger';
-import { readDroppedProject, readDroppedImage } from '../../utils/file-api';
+import { readDroppedProject, readDroppedImage, revokePathGrants } from '../../utils/file-api';
 import {
   guardedProjectTransition,
   loadImageAsNewCanvas,
@@ -20,7 +21,19 @@ import {
 } from '../../utils/project-io';
 import { toast } from '../../stores/toast-store';
 
-const IMAGE_EXTENSION_RE = /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i;
+/**
+ * Payload of the Rust-side `files-dropped` event (see lib.rs FilesDropped).
+ *
+ * Which extensions are droppable is decided in Rust, against the same
+ * allowlists the read commands enforce — the frontend used to keep its own
+ * regex, which accepted `.svg`/`.ico`/`.tiff` that the backend then rejected
+ * with a confusing error.
+ */
+interface FilesDroppedPayload {
+  path: string | null;
+  ignored: number;
+  unsupported: boolean;
+}
 
 export function EditorLayout() {
   const { isWindowPickerOpen, closeWindowPicker, isMonitorPickerOpen, closeMonitorPicker } = useUIStore();
@@ -74,60 +87,73 @@ export function EditorLayout() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [handleImageFile]);
 
-  // Handle drag-drop via Tauri's native webview drag-drop event, which
-  // delivers real filesystem paths. Browser `File.path` is not populated in
-  // the webview (see tauri.conf.json's `dragDropEnabled`), so the old
-  // DOM dragenter/dragover/drop listeners could never resolve a `.bshot`
-  // file's path — this replaces them entirely.
+  // Drag-hover highlight only. Tauri's own drag-drop event fires *before*
+  // the Rust handler that authorizes the dropped paths, so acting on its
+  // 'drop' here would race that authorization. The actual open is driven by
+  // the `files-dropped` event below, which Rust emits only after granting.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     getCurrentWebview()
       .onDragDropEvent((event) => {
-        const payload = event.payload;
-        switch (payload.type) {
-          case 'enter':
-          case 'over':
-            setIsDragging(true);
-            break;
-          case 'leave':
-            setIsDragging(false);
-            break;
-          case 'drop': {
-            setIsDragging(false);
-            const path = payload.paths[0];
-            if (!path) break;
-
-            const isProject = path.toLowerCase().endsWith('.bshot');
-            const isImage = IMAGE_EXTENSION_RE.test(path);
-
-            if (isProject) {
-              void guardedProjectTransition(async () => {
-                const result = await readDroppedProject(path);
-                await openProjectFromData(
-                  path,
-                  result.metadata,
-                  result.screenshotBytes,
-                  result.backgroundImageBytes
-                );
-              });
-            } else if (isImage) {
-              void guardedProjectTransition(async () => {
-                const bytes = await readDroppedImage(path);
-                await openImageFromBytes(path, bytes);
-              });
-            } else {
-              toast.error('Open Failed', 'Unsupported file type.');
-            }
-            break;
-          }
-        }
+        const type = event.payload.type;
+        setIsDragging(type === 'enter' || type === 'over');
       })
       .then((fn) => {
         unlisten = fn;
       });
 
     return () => unlisten?.();
+  }, []);
+
+  // Open a file the OS dropped on the window. Rust classifies the drop, grants
+  // a one-use read for the single path it selected, and emits this event —
+  // so the path here is always one the backend will honor.
+  useEffect(() => {
+    const unlisten = listen<FilesDroppedPayload>('files-dropped', async (event) => {
+      const { path, ignored, unsupported } = event.payload;
+
+      if (unsupported) {
+        toast.error('Open Failed', 'Unsupported file type.');
+        return;
+      }
+      if (!path) return;
+
+      if (ignored > 0) {
+        toast.info(
+          'Opened One File',
+          `${ignored} other file${ignored === 1 ? '' : 's'} ignored — only one can be opened at a time.`
+        );
+      }
+
+      const isProject = path.toLowerCase().endsWith('.bshot');
+
+      const outcome = await guardedProjectTransition(async () => {
+        if (isProject) {
+          const result = await readDroppedProject(path);
+          await openProjectFromData(
+            path,
+            result.metadata,
+            result.screenshotBytes,
+            result.backgroundImageBytes
+          );
+        } else {
+          const bytes = await readDroppedImage(path);
+          await openImageFromBytes(path, bytes);
+        }
+      });
+
+      // The read only happens on the 'completed' path. Anything else leaves
+      // the grant Rust issued unredeemed, so hand it back rather than letting
+      // it sit there until it times out.
+      if (outcome !== 'completed') {
+        await revokePathGrants([path]);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   return (

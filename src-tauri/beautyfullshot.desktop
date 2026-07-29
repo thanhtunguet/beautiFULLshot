@@ -1,9 +1,10 @@
 [Desktop Entry]
 Name=BeautyFullShot
 Comment=Screenshot beautification app
-Exec=beautyfullshot
+Exec=beautyfullshot %f
 Icon=beautyfullshot
 Type=Application
 Categories=Graphics;Utility;
 Keywords=screenshot;capture;annotation;beautify;
+MimeType=application/x-bshot;
 StartupWMClass=beautyfullshot

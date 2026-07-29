@@ -12,7 +12,7 @@
     }
   },
   "productName": "beautiFULLshot",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "identifier": "com.beautyfullshot.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -66,6 +66,15 @@
         "type": "downloadBootstrapper"
       }
     },
+    "fileAssociations": [
+      {
+        "ext": ["bshot"],
+        "name": "BeautyFullShot Project",
+        "description": "BeautyFullShot project file",
+        "mimeType": "application/x-bshot",
+        "role": "Editor"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "11.0",
       "entitlements": "entitlements.plist",

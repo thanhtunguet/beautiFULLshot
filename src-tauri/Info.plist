@@ -8,5 +8,43 @@
     <string>BeautyFullShot needs accessibility permission to register global keyboard shortcuts.</string>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>bshot</string>
+            </array>
+            <key>CFBundleTypeName</key>
+            <string>BeautyFullShot Project</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.beautyfullshot.bshot</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.archive</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>BeautyFullShot Project</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.beautyfullshot.bshot</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>bshot</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
 </dict>
 </plist>
