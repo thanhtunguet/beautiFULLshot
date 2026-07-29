@@ -24,7 +24,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
 xcap = "0.8.1"
-image = "0.25"
+image = { version = "0.25", default-features = false, features = ["png"] }
 dirs = "5.0"
 tauri-plugin-dialog = "2.7"
 tauri-plugin-clipboard-manager = "2"
