@@ -1,6 +1,6 @@
 // EditorLayout - Main application layout with toolbar, canvas, and sidebar
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { CanvasEditor } from '../canvas/canvas-editor';
@@ -84,6 +84,7 @@ export function EditorLayout() {
   const { isWindowPickerOpen, closeWindowPicker, isMonitorPickerOpen, closeMonitorPicker } = useUIStore();
   const { imageBytes, setImageFromBytes, fitToView } = useCanvasStore();
   const [isDragging, setIsDragging] = useState(false);
+  const lastNativeDropAtRef = useRef(0);
   const isCanvasEmpty = !imageBytes;
 
   // Handle window capture with auto-fit
@@ -97,7 +98,7 @@ export function EditorLayout() {
   );
 
   const openPathAsProjectOrImage = useCallback(async (rawPath: string) => {
-    const path = rawPath.trim();
+    const path = normalizeClipboardPathToken(rawPath) ?? rawPath.trim();
     if (!path) return false;
 
     if (path.toLowerCase().endsWith('.bshot')) {
@@ -221,6 +222,8 @@ export function EditorLayout() {
           case 'drop':
             setIsDragging(false);
             if (event.payload.paths.length > 0) {
+              // Prevent duplicate handling when DOM drop also fires.
+              lastNativeDropAtRef.current = Date.now();
               await openPathAsProjectOrImage(event.payload.paths[0]);
             }
             break;
@@ -238,17 +241,20 @@ export function EditorLayout() {
     };
   }, [openPathAsProjectOrImage]);
 
-  // Browser fallback for dev mode / non-Tauri runtime.
+  // DOM drop handling runs in all runtimes to prevent browser auto-opening file URLs.
   useEffect(() => {
-    if (isTauriRuntime()) return;
-
     let dragCounter = 0;
 
     const handleDragEnter = (e: globalThis.DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       dragCounter++;
-      if (e.dataTransfer?.types.includes('Files')) {
+      const types = e.dataTransfer?.types;
+      if (
+        types?.includes('Files') ||
+        types?.includes('text/uri-list') ||
+        types?.includes('text/plain')
+      ) {
         setIsDragging(true);
       }
     };
@@ -273,9 +279,20 @@ export function EditorLayout() {
       dragCounter = 0;
       setIsDragging(false);
 
+      // If native Tauri drop already handled this operation, skip DOM duplicate.
+      if (Date.now() - lastNativeDropAtRef.current < 250) {
+        return;
+      }
+
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         await handleDroppedFile(files[0]);
+        return;
+      }
+
+      const droppedPaths = extractImagePathsFromClipboard(e.dataTransfer || null);
+      if (droppedPaths[0]) {
+        await openPathAsProjectOrImage(droppedPaths[0]);
       }
     };
 
@@ -290,7 +307,7 @@ export function EditorLayout() {
       document.removeEventListener('dragleave', handleDragLeave);
       document.removeEventListener('drop', handleDrop);
     };
-  }, [handleDroppedFile]);
+  }, [handleDroppedFile, openPathAsProjectOrImage]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden canvas-area spatial-gap">
