@@ -4,9 +4,9 @@
 use std::sync::atomic::AtomicBool;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
-use tauri::{Emitter, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 #[cfg(target_os = "macos")]
-use tauri::{Manager, RunEvent};
+use tauri::RunEvent;
 
 #[cfg(target_os = "macos")]
 use tauri::menu::{
@@ -19,6 +19,7 @@ pub static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
 mod clipboard;
 mod file_ops;
+mod open_with;
 mod overlay;
 mod permissions;
 mod screenshot;
@@ -36,6 +37,15 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // Queue startup file paths so the frontend can open them after it mounts.
+            for arg in std::env::args().skip(1) {
+                // macOS passes process serial number arg on app launch.
+                if arg.starts_with("-psn_") {
+                    continue;
+                }
+                open_with::queue_startup_open_path(arg);
+            }
+
             // Create system tray
             tray::create_tray(app.handle())?;
 
@@ -212,11 +222,34 @@ pub fn run() {
             overlay::get_screenshot_data,
             overlay::clear_screenshot_data,
             clipboard::copy_image_to_clipboard,
+            open_with::take_startup_open_paths,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, event| {
             match &event {
+                tauri::RunEvent::Ready => {
+                    for path in open_with::take_startup_open_paths() {
+                        open_with::emit_open_file_event(_app, path);
+                    }
+                }
+
+                #[cfg(target_os = "macos")]
+                RunEvent::Opened { urls } => {
+                    for url in urls {
+                        if url.scheme() != "file" {
+                            continue;
+                        }
+
+                        if let Ok(path_buf) = url.to_file_path() {
+                            open_with::emit_open_file_event(
+                                _app,
+                                path_buf.to_string_lossy().to_string(),
+                            );
+                        }
+                    }
+                }
+
                 // Handle Cmd+Q (macOS) - hide to tray instead of quit
                 // Unless SHOULD_QUIT flag is set (from tray menu quit)
                 #[cfg(target_os = "macos")]

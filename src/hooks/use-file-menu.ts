@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import type React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Event } from '@tauri-apps/api/event';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -21,6 +22,7 @@ import {
   openProjectFile,
   openImageFile,
   buildProjectMetadata,
+  isSupportedImagePath,
 } from '../utils/project-io';
 import type { ProjectSaveData } from '../types/project';
 import { logError } from '../utils/logger';
@@ -53,6 +55,37 @@ export function useFileMenu({
   const isBusyRef = useRef(false);
   const isSavingRef = useRef(false);
 
+  // Shared path-open flow used by menu and OS-level "Open with..." events.
+  const openPathAsProjectOrImage = useCallback(async (rawPath: string) => {
+    const path = normalizePath(rawPath).trim();
+    if (!path) return;
+
+    if (path.toLowerCase().endsWith('.bshot')) {
+      await openProjectFile(path);
+      return;
+    }
+
+    if (isSupportedImagePath(path)) {
+      await openImageFile(path);
+      return;
+    }
+
+    toast.error('Open Failed', 'Unsupported file format.');
+  }, []);
+
+  const handleOpenWithPath = useCallback(
+    async (rawPath: string) => {
+      if (isBusyRef.current) return;
+      isBusyRef.current = true;
+      try {
+        await openPathAsProjectOrImage(rawPath);
+      } finally {
+        isBusyRef.current = false;
+      }
+    },
+    [openPathAsProjectOrImage]
+  );
+
   // ─── Open ────────────────────────────────────────────────────
   const handleOpen = useCallback(async (_event: Event<unknown>) => {
     if (isBusyRef.current) return;
@@ -61,17 +94,11 @@ export function useFileMenu({
       const path = await showOpenDialog();
       if (!path) return;
 
-      // Route by file extension: .bshot → project, image → load as screenshot
-      const ext = path.split('.').pop()?.toLowerCase();
-      if (ext === 'bshot') {
-        await openProjectFile(path);
-      } else {
-        await openImageFile(path);
-      }
+      await openPathAsProjectOrImage(path);
     } finally {
       isBusyRef.current = false;
     }
-  }, []);
+  }, [openPathAsProjectOrImage]);
 
   // ─── Save ────────────────────────────────────────────────────
   const handleSave = useCallback(
@@ -206,6 +233,17 @@ export function useFileMenu({
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
+    void (async () => {
+      try {
+        const startupPaths = await invoke<string[]>('take_startup_open_paths');
+        for (const path of startupPaths) {
+          await handleOpenWithPath(path);
+        }
+      } catch (e) {
+        logError('useFileMenu:take_startup_open_paths', e);
+      }
+    })();
+
     listen('menu-file-open', handleOpen).then((fn) =>
       unlisteners.push(fn)
     );
@@ -221,11 +259,21 @@ export function useFileMenu({
     listen('menu-file-delete', handleDelete).then((fn) =>
       unlisteners.push(fn)
     );
+    listen<string>('app-open-file', (event) => {
+      void handleOpenWithPath(event.payload);
+    }).then((fn) => unlisteners.push(fn));
 
     return () => {
       unlisteners.forEach((fn) => fn());
     };
-  }, [handleOpen, handleSave, handleExport, handleClose, handleDelete]);
+  }, [
+    handleOpen,
+    handleSave,
+    handleExport,
+    handleClose,
+    handleDelete,
+    handleOpenWithPath,
+  ]);
 
   // Expose save callback for keyboard shortcut handler
   // (Cmd+S accelerator was removed from Rust menu to avoid double-fire)

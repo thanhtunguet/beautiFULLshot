@@ -12,7 +12,7 @@
     }
   },
   "productName": "beautiFULLshot",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "identifier": "com.beautyfullshot.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -54,6 +54,90 @@
       "icons/icon.ico"
     ],
     "category": "GraphicsAndDesign",
+    "fileAssociations": [
+      {
+        "ext": [
+          "bshot"
+        ],
+        "name": "beautiFULLshot Project",
+        "description": "beautiFULLshot project file",
+        "role": "Editor",
+        "mimeType": "application/x-beautyfullshot-project",
+        "rank": "Owner"
+      },
+      {
+        "ext": [
+          "png"
+        ],
+        "name": "PNG Image",
+        "description": "PNG image file",
+        "role": "Editor",
+        "mimeType": "image/png",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "jpg",
+          "jpeg"
+        ],
+        "name": "JPEG Image",
+        "description": "JPEG image file",
+        "role": "Editor",
+        "mimeType": "image/jpeg",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "webp"
+        ],
+        "name": "WebP Image",
+        "description": "WebP image file",
+        "role": "Editor",
+        "mimeType": "image/webp",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "gif"
+        ],
+        "name": "GIF Image",
+        "description": "GIF image file",
+        "role": "Editor",
+        "mimeType": "image/gif",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "bmp"
+        ],
+        "name": "Bitmap Image",
+        "description": "Bitmap image file",
+        "role": "Editor",
+        "mimeType": "image/bmp",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "tif",
+          "tiff"
+        ],
+        "name": "TIFF Image",
+        "description": "TIFF image file",
+        "role": "Editor",
+        "mimeType": "image/tiff",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "svg"
+        ],
+        "name": "SVG Image",
+        "description": "Scalable Vector Graphics image file",
+        "role": "Editor",
+        "mimeType": "image/svg+xml",
+        "rank": "Default"
+      }
+    ],
     "shortDescription": "Screenshot beautification app",
     "longDescription": "Capture, annotate, and beautify screenshots with gradient backgrounds and export options. Cross-platform support for Windows, macOS, and Linux.",
     "copyright": "2025 beautiFULLshot",

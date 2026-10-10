@@ -1,12 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <key>NSScreenCaptureDescription</key>
-    <string>BeautyFullShot needs screen recording permission to capture screenshots.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>BeautyFullShot needs accessibility permission to register global keyboard shortcuts.</string>
-    <key>LSUIElement</key>
-    <true/>
-</dict>
+    <dict>
+        <key>NSScreenCaptureDescription</key>
+        <string>BeautyFullShot needs screen recording permission to capture screenshots.</string>
+        <key>NSAppleEventsUsageDescription</key>
+        <string>BeautyFullShot needs accessibility permission to register global keyboard shortcuts.</string>
+        <key>CFBundleDocumentTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeName</key>
+                <string>beautiFULLshot Project</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSHandlerRank</key>
+                <string>Owner</string>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                    <string>bshot</string>
+                </array>
+            </dict>
+            <dict>
+                <key>CFBundleTypeName</key>
+                <string>Image File</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSHandlerRank</key>
+                <string>Default</string>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                    <string>png</string>
+                    <string>jpg</string>
+                    <string>jpeg</string>
+                    <string>webp</string>
+                    <string>gif</string>
+                    <string>bmp</string>
+                    <string>tif</string>
+                    <string>tiff</string>
+                    <string>svg</string>
+                </array>
+            </dict>
+        </array>
+        <key>LSUIElement</key>
+        <true/>
+    </dict>
 </plist>
