@@ -103,6 +103,7 @@ jobs:
           retention-days: 1
 
   build-windows:
+    if: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -240,7 +241,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -275,7 +276,6 @@ jobs:
           # Collect signatures for latest.json
           MACOS_AARCH64_SIG=""
           MACOS_X64_SIG=""
-          WINDOWS_SIG=""
           LINUX_SIG=""
 
           for sig in artifacts/**/*.sig; do
@@ -288,8 +288,6 @@ jobs:
                 MACOS_AARCH64_SIG="$content"
               elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
                 MACOS_X64_SIG="$content"
-              elif [[ "$filename" == *"-setup.exe.sig" ]]; then
-                WINDOWS_SIG="$content"
               elif [[ "$filename" == *".AppImage.sig" && "$filename" != *".tar.gz.sig" ]]; then
                 LINUX_SIG="$content"
               fi
@@ -316,10 +314,6 @@ jobs:
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
                 "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage"
-              },
-              "windows-x86_64": {
-                "signature": "${WINDOWS_SIG}",
-                "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_x64-setup.exe"
               }
             }
           }
