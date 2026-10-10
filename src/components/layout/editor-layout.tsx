@@ -1,6 +1,8 @@
 // EditorLayout - Main application layout with toolbar, canvas, and sidebar
 
 import { useCallback, useEffect, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { CanvasEditor } from '../canvas/canvas-editor';
 import { ZoomControls } from '../canvas/zoom-controls';
 import { Toolbar } from '../toolbar/toolbar';
@@ -9,34 +11,80 @@ import { WindowPickerModal } from '../capture/window-picker-modal';
 import { MonitorPickerModal } from '../capture/monitor-picker-modal';
 import { useUIStore } from '../../stores/ui-store';
 import { useCanvasStore } from '../../stores/canvas-store';
-import { useCropStore } from '../../stores/crop-store';
 import { logError } from '../../utils/logger';
-import { openProjectFile } from '../../utils/project-io';
+import {
+  isSupportedImagePath,
+  openImageBytes,
+  openImageFile,
+  openProjectFile,
+} from '../../utils/project-io';
 import { toast } from '../../stores/toast-store';
 
-// Helper: Load image and get dimensions
-function loadImageFromBytes(bytes: Uint8Array): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const blob = new Blob([bytes], { type: 'image/png' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.width, height: img.height });
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Failed to load image'));
-    };
-    img.src = url;
-  });
+function isTauriRuntime() {
+  return '__TAURI_INTERNALS__' in window;
+}
+
+function normalizeClipboardPathToken(token: string): string | null {
+  const trimmed = token.trim().replace(/^['"]|['"]$/g, '');
+  if (!trimmed || trimmed.startsWith('#')) return null;
+
+  if (trimmed.startsWith('file://')) {
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== 'file:') return null;
+
+      const decodedPath = decodeURIComponent(url.pathname);
+      if (!decodedPath) return null;
+
+      // On Windows, file:///C:/... becomes /C:/... in pathname.
+      if (/^\/[A-Za-z]:\//.test(decodedPath)) {
+        return decodedPath.slice(1);
+      }
+
+      // UNC path format: file://server/share/path -> //server/share/path
+      if (url.host) {
+        return `//${url.host}${decodedPath}`;
+      }
+
+      return decodedPath;
+    } catch {
+      return null;
+    }
+  }
+
+  return trimmed;
+}
+
+function extractImagePathsFromText(rawText: string): string[] {
+  if (!rawText) return [];
+
+  const candidates = rawText
+    .split(/\r?\n/)
+    .map(normalizeClipboardPathToken)
+    .filter((value): value is string => Boolean(value));
+
+  return candidates.filter((value) => isSupportedImagePath(value));
+}
+
+function extractImagePathsFromClipboard(clipboard: DataTransfer | null): string[] {
+  if (!clipboard) return [];
+
+  const uriList = clipboard.getData('text/uri-list');
+  const plainText = clipboard.getData('text/plain');
+
+  const allPaths = [
+    ...extractImagePathsFromText(uriList),
+    ...extractImagePathsFromText(plainText),
+  ];
+
+  return Array.from(new Set(allPaths));
 }
 
 export function EditorLayout() {
   const { isWindowPickerOpen, closeWindowPicker, isMonitorPickerOpen, closeMonitorPicker } = useUIStore();
-  const { setImageFromBytes, fitToView } = useCanvasStore();
-  const { clearCrop } = useCropStore();
+  const { imageBytes, setImageFromBytes, fitToView } = useCanvasStore();
   const [isDragging, setIsDragging] = useState(false);
+  const isCanvasEmpty = !imageBytes;
 
   // Handle window capture with auto-fit
   const handleWindowCapture = useCallback(
@@ -48,44 +96,152 @@ export function EditorLayout() {
     [setImageFromBytes, fitToView]
   );
 
-  // Handle image load from File/Blob
+  const openPathAsProjectOrImage = useCallback(async (rawPath: string) => {
+    const path = rawPath.trim();
+    if (!path) return false;
+
+    if (path.toLowerCase().endsWith('.bshot')) {
+      await openProjectFile(path);
+      return true;
+    }
+
+    if (isSupportedImagePath(path)) {
+      await openImageFile(path);
+      return true;
+    }
+
+    return false;
+  }, []);
+
+  // Handle image load from File/Blob when absolute path is not available
   const handleImageFile = useCallback(async (file: File | Blob) => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
-      const { width, height } = await loadImageFromBytes(bytes);
-      clearCrop();
-      setImageFromBytes(bytes, width, height);
-      setTimeout(() => fitToView(), 50);
+      const sourceName = file instanceof File ? file.name : undefined;
+      await openImageBytes(bytes, sourceName);
     } catch (e) {
       logError('EditorLayout:handleImageFile', e);
+      toast.error('Open Failed', 'Could not read image data from clipboard/drop.');
     }
-  }, [clearCrop, setImageFromBytes, fitToView]);
+  }, []);
 
-  // Handle paste from clipboard
+  const handleDroppedFile = useCallback(
+    async (file: File) => {
+      const fileName = file.name || '';
+      const filePath = (file as File & { path?: string }).path;
+
+      if (filePath) {
+        await openPathAsProjectOrImage(filePath);
+        return;
+      }
+
+      if (fileName.toLowerCase().endsWith('.bshot')) {
+        toast.error('Open Failed', 'Could not determine file path. Use File > Open instead.');
+        return;
+      }
+
+      const isImage = file.type.startsWith('image/') || isSupportedImagePath(fileName);
+      if (isImage) {
+        await handleImageFile(file);
+      }
+    },
+    [handleImageFile, openPathAsProjectOrImage]
+  );
+
+  // Handle paste from clipboard only when no image is currently loaded.
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
+      if (!isCanvasEmpty) return;
 
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault();
-          const file = item.getAsFile();
-          if (file) {
-            await handleImageFile(file);
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (file) {
+              await handleImageFile(file);
+            }
+            return;
           }
-          return;
         }
+      }
+
+      const clipboardFiles = Array.from(e.clipboardData?.files || []);
+      const imageFile = clipboardFiles.find(
+        (file) => file.type.startsWith('image/') || isSupportedImagePath(file.name)
+      );
+      if (imageFile) {
+        e.preventDefault();
+        await handleImageFile(imageFile);
+        return;
+      }
+
+      const eventPaths = extractImagePathsFromClipboard(e.clipboardData);
+      if (eventPaths[0]) {
+        e.preventDefault();
+        await openPathAsProjectOrImage(eventPaths[0]);
+        return;
+      }
+
+      // Fallback for platforms where paste event doesn't expose file paths.
+      try {
+        const fallbackText = await readText();
+        const fallbackPath = extractImagePathsFromText(fallbackText)[0];
+        if (fallbackPath) {
+          e.preventDefault();
+          await openPathAsProjectOrImage(fallbackPath);
+        }
+      } catch {
+        // Ignore clipboard API failures and let normal paste behavior continue.
       }
     };
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [handleImageFile]);
+  }, [handleImageFile, isCanvasEmpty, openPathAsProjectOrImage]);
 
-  // Handle drag-drop events (using native DOM events for Tauri compatibility)
+  // Tauri native file-drop events provide reliable absolute paths for Finder/Explorer drops.
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let unlisten: (() => void) | null = null;
+
+    getCurrentWindow()
+      .onDragDropEvent(async (event) => {
+        switch (event.payload.type) {
+          case 'enter':
+          case 'over':
+            setIsDragging(true);
+            break;
+          case 'leave':
+            setIsDragging(false);
+            break;
+          case 'drop':
+            setIsDragging(false);
+            if (event.payload.paths.length > 0) {
+              await openPathAsProjectOrImage(event.payload.paths[0]);
+            }
+            break;
+        }
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((error) => {
+        logError('EditorLayout:onDragDropEvent', error);
+      });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openPathAsProjectOrImage]);
+
+  // Browser fallback for dev mode / non-Tauri runtime.
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+
     let dragCounter = 0;
 
     const handleDragEnter = (e: globalThis.DragEvent) => {
@@ -119,26 +275,7 @@ export function EditorLayout() {
 
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
-        const file = files[0];
-        const fileName = file.name || '';
-
-        // Check if it's a .bshot project file first
-        if (fileName.toLowerCase().endsWith('.bshot')) {
-          const filePath = (file as any).path;
-          if (filePath) {
-            await openProjectFile(filePath);
-          } else {
-            toast.error('Open Failed', 'Could not determine file path. Use File > Open instead.');
-          }
-          return;
-        }
-
-        // Check MIME type or file extension (macOS Finder may not set MIME)
-        const isImage = file.type.startsWith('image/') ||
-          /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i.test(fileName);
-        if (isImage) {
-          await handleImageFile(file);
-        }
+        await handleDroppedFile(files[0]);
       }
     };
 
@@ -153,7 +290,7 @@ export function EditorLayout() {
       document.removeEventListener('dragleave', handleDragLeave);
       document.removeEventListener('drop', handleDrop);
     };
-  }, [handleImageFile]);
+  }, [handleDroppedFile]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden canvas-area spatial-gap">

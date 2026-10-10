@@ -15,6 +15,79 @@ import { GRADIENT_PRESETS } from '../data/gradients';
 import { WALLPAPER_PRESETS } from '../data/wallpapers';
 import type { ProjectMetadata } from '../types/project';
 
+const IMAGE_PATH_REGEX = /\.(png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff?)$/i;
+
+function getImageDimensions(
+  bytes: Uint8Array
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const blob = new Blob([bytes], { type: 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.width, height: img.height });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    img.src = url;
+  });
+}
+
+function resetStateForNewImage() {
+  const canvasStore = useCanvasStore.getState();
+  const annotationStore = useAnnotationStore.getState();
+  const historyStore = useHistoryStore.getState();
+  const cropStore = useCropStore.getState();
+
+  canvasStore.clearCanvas();
+  annotationStore.clearAnnotations();
+  historyStore.clear();
+  cropStore.clearCrop();
+
+  // New image starts a fresh project (not tied to any .bshot file).
+  useProjectStore.getState().closeProject();
+}
+
+/**
+ * Check if a path points to a supported image type.
+ */
+export function isSupportedImagePath(path: string): boolean {
+  return IMAGE_PATH_REGEX.test(path);
+}
+
+/**
+ * Open image bytes as a new screenshot project.
+ * Returns true on success.
+ */
+export async function openImageBytes(
+  bytes: Uint8Array,
+  sourceName?: string
+): Promise<boolean> {
+  try {
+    const { width, height } = await getImageDimensions(bytes);
+
+    resetStateForNewImage();
+
+    const canvasStore = useCanvasStore.getState();
+    canvasStore.setImageFromBytes(bytes, width, height);
+    setTimeout(() => canvasStore.fitToView(), 100);
+
+    if (sourceName) {
+      toast.success('Opened', `Image loaded from ${sourceName}`);
+    }
+
+    return true;
+  } catch (e) {
+    logError('openImageBytes', e);
+    const message = e instanceof Error ? e.message : String(e);
+    toast.error('Open Failed', message);
+    return false;
+  }
+}
+
 /**
  * Open an image file as a new screenshot via File > Open.
  * Full flow: read bytes → get dimensions → clear state → load onto canvas.
@@ -24,48 +97,8 @@ export async function openImageFile(path: string): Promise<boolean> {
   try {
     const bytes = await readBinaryFile(path);
 
-    // Get image dimensions
-    const { width, height } = await new Promise<{ width: number; height: number }>(
-      (resolve, reject) => {
-        const blob = new Blob([bytes], { type: 'image/png' });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => {
-          URL.revokeObjectURL(url);
-          resolve({ width: img.width, height: img.height });
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error('Failed to load image'));
-        };
-        img.src = url;
-      }
-    );
-
-    // Clear existing project state
-    const canvasStore = useCanvasStore.getState();
-    const annotationStore = useAnnotationStore.getState();
-    const historyStore = useHistoryStore.getState();
-    const cropStore = useCropStore.getState();
-
-    canvasStore.clearCanvas();
-    annotationStore.clearAnnotations();
-    historyStore.clear();
-    cropStore.clearCrop();
-
-    // Close any open project (this is a new image, not a .bshot project)
-    useProjectStore.getState().closeProject();
-
-    // Load image onto canvas
-    canvasStore.setImageFromBytes(bytes, width, height);
-    setTimeout(() => canvasStore.fitToView(), 100);
-
     const displayPath = normalizePath(path);
-    toast.success(
-      'Opened',
-      `Image loaded from ${displayPath.split(/[\\/]/).pop()}`
-    );
-    return true;
+    return await openImageBytes(bytes, displayPath.split(/[\\/]/).pop());
   } catch (e) {
     logError('openImageFile', e);
     const message = e instanceof Error ? e.message : String(e);
