@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-macos:
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -241,7 +242,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [build-macos, build-linux]
+    needs: [build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -274,8 +275,6 @@ jobs:
           done
 
           # Collect signatures for latest.json
-          MACOS_AARCH64_SIG=""
-          MACOS_X64_SIG=""
           LINUX_SIG=""
 
           for sig in artifacts/**/*.sig; do
@@ -284,11 +283,7 @@ jobs:
               content=$(cat "$sig")
               echo "Signature found: $filename (${#content} chars)"
 
-              if [[ "$filename" == *"aarch64"*".app.tar.gz.sig" ]]; then
-                MACOS_AARCH64_SIG="$content"
-              elif [[ "$filename" == *"x64"*".app.tar.gz.sig" ]]; then
-                MACOS_X64_SIG="$content"
-              elif [[ "$filename" == *".AppImage.sig" && "$filename" != *".tar.gz.sig" ]]; then
+              if [[ "$filename" == *".AppImage.sig" && "$filename" != *".tar.gz.sig" ]]; then
                 LINUX_SIG="$content"
               fi
             fi
@@ -303,14 +298,6 @@ jobs:
             "notes": "See the assets to download this version.",
             "pub_date": "${PUB_DATE}",
             "platforms": {
-              "darwin-aarch64": {
-                "signature": "${MACOS_AARCH64_SIG}",
-                "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "${MACOS_X64_SIG}",
-                "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_x64.app.tar.gz"
-              },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
                 "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage"
