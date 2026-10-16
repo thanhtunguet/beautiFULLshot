@@ -8,7 +8,47 @@ on:
 permissions:
   contents: write
 
+# One release run per tag; never cancel a release half-way through.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  # Only tags shaped like vMAJOR.MINOR.PATCH[-prerelease] may release.
+  validate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - name: Validate tag
+        id: check
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Tag '$TAG' is not a valid release tag (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, e.g. v1.1.3 or v1.2.0-beta.1)"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npx tsc --noEmit
+
   build-macos:
     if: false
     strategy:
@@ -168,6 +208,7 @@ jobs:
           retention-days: 1
 
   build-linux:
+    needs: [validate-tag, test]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -242,7 +283,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [build-linux]
+    needs: [validate-tag, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -250,44 +291,54 @@ jobs:
           path: artifacts
           merge-multiple: false
 
-      - name: Create release and upload assets
+      - name: Create release, upload assets and publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ needs.validate-tag.outputs.prerelease }}
         run: |
-          # Create release
-          gh release create "$VERSION" \
-            --repo ${{ github.repository }} \
-            --title "BeautyFullShot $VERSION" \
-            --notes "See the assets to download this version." \
-            --draft
+          # Create as draft first so the updater endpoint (releases/latest)
+          # never points at a release that is still missing assets.
+          # Skip creation when re-running a failed workflow for the same tag.
+          if ! gh release view "$VERSION" >/dev/null 2>&1; then
+            PRERELEASE_FLAG=""
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              PRERELEASE_FLAG="--prerelease"
+            fi
+            gh release create "$VERSION" \
+              --title "BeautyFullShot $VERSION" \
+              --generate-notes \
+              --draft \
+              $PRERELEASE_FLAG
+          fi
 
           echo "=== All artifacts ==="
           find artifacts -type f | sort
 
-          # Upload all artifacts
-          for file in artifacts/**/*; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "Uploading: $filename"
-              gh release upload "$VERSION" "$file" --repo ${{ github.repository }} --clobber || true
-            fi
-          done
+          # Upload all artifacts (fail the job if any upload fails)
+          while IFS= read -r file; do
+            echo "Uploading: $(basename "$file")"
+            gh release upload "$VERSION" "$file" --clobber
+          done < <(find artifacts -type f | sort)
 
           # Collect signatures for latest.json
           LINUX_SIG=""
 
-          for sig in artifacts/**/*.sig; do
-            if [ -f "$sig" ]; then
-              filename=$(basename "$sig")
-              content=$(cat "$sig")
-              echo "Signature found: $filename (${#content} chars)"
+          while IFS= read -r sig; do
+            filename=$(basename "$sig")
+            content=$(cat "$sig")
+            echo "Signature found: $filename (${#content} chars)"
 
-              if [[ "$filename" == *".AppImage.sig" && "$filename" != *".tar.gz.sig" ]]; then
-                LINUX_SIG="$content"
-              fi
+            if [[ "$filename" == *".AppImage.sig" && "$filename" != *".tar.gz.sig" ]]; then
+              LINUX_SIG="$content"
             fi
-          done
+          done < <(find artifacts -type f -name '*.sig' | sort)
+
+          if [ -z "$LINUX_SIG" ]; then
+            echo "::error::No AppImage signature found; check TAURI_SIGNING_PRIVATE_KEY secrets"
+            exit 1
+          fi
 
           VERSION_NUM="${VERSION#v}"
           PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -300,7 +351,7 @@ jobs:
             "platforms": {
               "linux-x86_64": {
                 "signature": "${LINUX_SIG}",
-                "url": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage"
+                "url": "https://github.com/${GH_REPO}/releases/download/${VERSION}/beautiFULLshot_${VERSION_NUM}_amd64.AppImage"
               }
             }
           }
@@ -311,16 +362,11 @@ jobs:
           echo "=== latest.json ==="
           cat latest.json
 
-          gh release upload "$VERSION" latest.json --repo ${{ github.repository }} --clobber
+          gh release upload "$VERSION" latest.json --clobber
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npm test -- --run
-      - run: npx tsc --noEmit
+          # All assets are in place: publish.
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            gh release edit "$VERSION" --draft=false --latest=false
+          else
+            gh release edit "$VERSION" --draft=false --latest
+          fi
