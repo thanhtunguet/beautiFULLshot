@@ -222,6 +222,7 @@ pub fn run() {
             overlay::get_screenshot_data,
             overlay::clear_screenshot_data,
             clipboard::copy_image_to_clipboard,
+            clipboard::read_clipboard_image,
             open_with::take_startup_open_paths,
         ])
         .build(tauri::generate_context!())

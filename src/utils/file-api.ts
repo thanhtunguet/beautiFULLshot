@@ -132,3 +132,13 @@ export async function readBinaryFile(path: string): Promise<Uint8Array> {
   const bytes: number[] = await invoke<number[]>('read_binary_file', { path });
   return new Uint8Array(bytes);
 }
+
+/**
+ * Read an image from the system clipboard via the native side (PNG bytes).
+ * Returns null when the clipboard holds no image. Needed on Linux, where
+ * WebKitGTK frequently omits screenshot images from the DOM paste event.
+ */
+export async function readClipboardImage(): Promise<Uint8Array | null> {
+  const bytes = await invoke<number[] | null>('read_clipboard_image');
+  return bytes ? new Uint8Array(bytes) : null;
+}

@@ -58,3 +58,47 @@ pub fn copy_image_to_clipboard(base64_data: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Read an image from the system clipboard and return it as PNG bytes.
+/// Returns `None` when the clipboard holds no image.
+///
+/// Used as a fallback because WebKitGTK (Linux) often does not expose
+/// screenshot images through the DOM `paste` event.
+#[tauri::command]
+pub async fn read_clipboard_image() -> Result<Option<Vec<u8>>, String> {
+    // arboard may block on the clipboard owner, keep it off the async runtime.
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut clipboard =
+            Clipboard::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
+
+        let img = match clipboard.get_image() {
+            Ok(img) => img,
+            Err(arboard::Error::ContentNotAvailable) => return Ok(None),
+            Err(e) => return Err(format!("Failed to read clipboard image: {}", e)),
+        };
+
+        let rgba = image::RgbaImage::from_raw(
+            img.width as u32,
+            img.height as u32,
+            img.bytes.into_owned(),
+        )
+        .ok_or_else(|| "Clipboard image has invalid dimensions".to_string())?;
+
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(rgba)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode clipboard image: {}", e))?;
+
+        if png.len() > MAX_IMAGE_SIZE {
+            return Err(format!(
+                "Clipboard image too large: {} bytes (max {} bytes)",
+                png.len(),
+                MAX_IMAGE_SIZE
+            ));
+        }
+
+        Ok(Some(png))
+    })
+    .await
+    .map_err(|e| format!("Clipboard task failed: {}", e))?
+}

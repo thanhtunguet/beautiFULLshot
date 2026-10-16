@@ -18,6 +18,7 @@ import {
   openImageFile,
   openProjectFile,
 } from '../../utils/project-io';
+import { readClipboardImage } from '../../utils/file-api';
 import { toast } from '../../stores/toast-store';
 
 function isTauriRuntime() {
@@ -85,6 +86,8 @@ export function EditorLayout() {
   const { imageBytes, setImageFromBytes, fitToView } = useCanvasStore();
   const [isDragging, setIsDragging] = useState(false);
   const lastNativeDropAtRef = useRef(0);
+  const lastPasteEventAtRef = useRef(0);
+  const nativePasteInFlightRef = useRef(false);
   const isCanvasEmpty = !imageBytes;
 
   // Handle window capture with auto-fit
@@ -150,10 +153,28 @@ export function EditorLayout() {
     [handleImageFile, openPathAsProjectOrImage]
   );
 
+  // Read an image straight from the OS clipboard. Returns true if one was opened.
+  const pasteImageFromNativeClipboard = useCallback(async () => {
+    if (!isTauriRuntime() || nativePasteInFlightRef.current) return false;
+    nativePasteInFlightRef.current = true;
+    try {
+      const bytes = await readClipboardImage();
+      if (!bytes) return false;
+      await openImageBytes(bytes);
+      return true;
+    } catch (e) {
+      logError('EditorLayout:pasteImageFromNativeClipboard', e);
+      return false;
+    } finally {
+      nativePasteInFlightRef.current = false;
+    }
+  }, []);
+
   // Handle paste from clipboard only when no image is currently loaded.
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
       if (!isCanvasEmpty) return;
+      lastPasteEventAtRef.current = Date.now();
 
       const items = e.clipboardData?.items;
       if (items) {
@@ -186,7 +207,12 @@ export function EditorLayout() {
         return;
       }
 
-      // Fallback for platforms where paste event doesn't expose file paths.
+      // Fallbacks for platforms (WebKitGTK) where the paste event doesn't expose the data.
+      if (await pasteImageFromNativeClipboard()) {
+        e.preventDefault();
+        return;
+      }
+
       try {
         const fallbackText = await readText();
         const fallbackPath = extractImagePathsFromText(fallbackText)[0];
@@ -199,9 +225,34 @@ export function EditorLayout() {
       }
     };
 
+    // Some WebKitGTK builds never dispatch `paste` on a non-editable page, so also
+    // react to Ctrl/Cmd+V directly. Skipped when a paste event arrives (handled above).
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isCanvasEmpty) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== 'v') return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const pressedAt = Date.now();
+      setTimeout(() => {
+        if (lastPasteEventAtRef.current >= pressedAt) return;
+        void pasteImageFromNativeClipboard();
+      }, 150);
+    };
+
     window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [handleImageFile, isCanvasEmpty, openPathAsProjectOrImage]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleImageFile, isCanvasEmpty, openPathAsProjectOrImage, pasteImageFromNativeClipboard]);
 
   // Tauri native file-drop events provide reliable absolute paths for Finder/Explorer drops.
   useEffect(() => {
