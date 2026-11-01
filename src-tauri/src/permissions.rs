@@ -111,29 +111,25 @@ pub fn open_accessibility_settings() {
     }
 }
 
-/// Detect if running on Wayland (Linux)
-/// Returns warning message if Wayland detected with setup instructions
+/// Detect if running on Wayland without grim available (Linux)
+/// Returns an error message only when Wayland is detected but grim is missing.
+/// When grim is present, Wayland capture works fine — no message is returned.
 #[tauri::command]
 pub fn check_wayland() -> Option<String> {
     #[cfg(target_os = "linux")]
     {
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
-            // Check if grim is available as fallback
+            // grim is required for screenshot capture on Wayland
             let grim_available = std::process::Command::new("which")
                 .arg("grim")
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false);
 
-            if grim_available {
+            if !grim_available {
                 return Some(
-                    "Wayland detected. Using grim for screenshot capture."
-                        .to_string(),
-                );
-            } else {
-                return Some(
-                    "Wayland detected. Install 'grim' for screenshot support: \
-                     sudo apt install grim (Debian/Ubuntu) or \
+                    "grim is not installed. Screenshot capture requires grim on Wayland. \
+                     Install it with: sudo apt install grim (Debian/Ubuntu) or \
                      sudo pacman -S grim (Arch)"
                         .to_string(),
                 );
