@@ -41,13 +41,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npm test -- --run
-      - run: npx tsc --noEmit
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test -- --run
+      - run: pnpm exec tsc --noEmit
 
   build-macos:
     if: false
@@ -74,10 +77,14 @@ jobs:
           # Update Cargo.toml
           sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: 'pnpm'
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -102,7 +109,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Build
         env:
@@ -113,7 +120,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          npm run tauri build -- --target ${{ matrix.target }} --bundles app,dmg
+          pnpm run tauri build -- --target ${{ matrix.target }} --bundles app,dmg
 
       - name: Prepare artifacts
         run: |
@@ -165,10 +172,14 @@ jobs:
           # Update Cargo.toml
           (Get-Content src-tauri/Cargo.toml) -replace '^version = ".*"', "version = `"$VERSION`"" | Set-Content src-tauri/Cargo.toml
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: 'pnpm'
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -176,13 +187,13 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --bundles nsis,msi
+        run: pnpm run tauri build -- --bundles nsis,msi
 
       - name: Prepare artifacts
         shell: bash
@@ -224,10 +235,14 @@ jobs:
           # Update Cargo.toml
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: 'pnpm'
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -247,7 +262,7 @@ jobs:
             libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             patchelf pkg-config
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Build
         env:
@@ -255,7 +270,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPIMAGE_EXTRACT_AND_RUN: '1'
           NO_STRIP: 'true'
-        run: npm run tauri build -- --bundles deb,rpm,appimage
+        run: pnpm run tauri build -- --bundles deb,rpm,appimage
 
       - name: Prepare artifacts
         run: |
