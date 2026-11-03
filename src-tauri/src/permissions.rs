@@ -111,30 +111,17 @@ pub fn open_accessibility_settings() {
     }
 }
 
-/// Detect if running on Wayland without grim available (Linux)
-/// Returns an error message only when Wayland is detected but grim is missing.
-/// When grim is present, Wayland capture works fine — no message is returned.
+/// Detect a Linux Wayland session that has no usable screenshot backend
+/// Returns an install hint for the user's distro and desktop, or None when capture should work
+/// (X11, other platforms, or a Wayland desktop whose portal/tool is available).
 #[tauri::command]
 pub fn check_wayland() -> Option<String> {
     #[cfg(target_os = "linux")]
     {
-        if std::env::var("WAYLAND_DISPLAY").is_ok() {
-            // grim is required for screenshot capture on Wayland
-            let grim_available = std::process::Command::new("which")
-                .arg("grim")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
-            if !grim_available {
-                return Some(
-                    "grim is not installed. Screenshot capture requires grim on Wayland. \
-                     Install it with: sudo apt install grim (Debian/Ubuntu) or \
-                     sudo pacman -S grim (Arch)"
-                        .to_string(),
-                );
-            }
-        }
+        crate::linux_capture::diagnose(crate::linux_env::current())
     }
-    None
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
 }

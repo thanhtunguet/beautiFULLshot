@@ -29,18 +29,18 @@ interface UseScreenshotReturn {
 
   // Permission checks
   checkPermission: () => Promise<boolean>;
-  grimMissingOnWayland: string | null;
+  captureWarning: string | null;
 }
 
 export function useScreenshot(): UseScreenshotReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [grimMissingOnWayland, setGrimMissingOnWayland] = useState<string | null>(null);
+  const [captureWarning, setCaptureWarning] = useState<string | null>(null);
 
-  // Check for missing grim on Wayland at mount (Linux only)
+  // Warn at mount if this Linux session has no usable screenshot backend
   useEffect(() => {
     api.checkWayland().then((message) => {
-      if (message) setGrimMissingOnWayland(message);
+      if (message) setCaptureWarning(message);
     });
   }, []);
 
@@ -141,6 +141,6 @@ export function useScreenshot(): UseScreenshotReturn {
     getWindows,
     getMonitors,
     checkPermission,
-    grimMissingOnWayland,
+    captureWarning,
   };
 }

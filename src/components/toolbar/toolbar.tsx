@@ -36,7 +36,7 @@ function getImageDimensions(bytes: Uint8Array): Promise<{ width: number; height:
 }
 
 export function Toolbar() {
-  const { captureFullscreen, loading, error, grimMissingOnWayland } = useScreenshot();
+  const { captureFullscreen, loading, error, captureWarning } = useScreenshot();
   const { setImageFromBytes, clearCanvas, imageUrl, fitToView } = useCanvasStore();
   const { clearAnnotations } = useAnnotationStore();
   const { clearCrop } = useCropStore();
@@ -149,12 +149,12 @@ export function Toolbar() {
         <span role="alert" className="text-red-500 text-sm glass-flat px-2 py-1 rounded-lg">{error}</span>
       )}
 
-      {/* Grim missing on Wayland caution icon */}
-      {grimMissingOnWayland && (
+      {/* Caution icon when Linux screen capture has no usable backend */}
+      {captureWarning && (
         <button
           type="button"
-          aria-label={grimMissingOnWayland}
-          title={grimMissingOnWayland}
+          aria-label={captureWarning}
+          title={captureWarning}
           className="w-9 h-9 flex items-center justify-center rounded-xl text-yellow-500 hover:text-yellow-600 flex-shrink-0 cursor-default"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

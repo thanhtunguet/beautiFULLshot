@@ -38,7 +38,11 @@ chmod +x BeautyFullShot_*.AppImage
 ./BeautyFullShot_*.AppImage
 ```
 
-> **Note**: X11 is required. Wayland has limited support.
+> **Note**: Works on X11 and Wayland. Wayland capture uses the desktop's own API:
+> GNOME and most desktops use `xdg-desktop-portal` (with `gnome-screenshot` as fallback),
+> KDE Plasma uses `spectacle`, and Sway/Hyprland and other wlroots compositors use `grim`.
+> The first capture on GNOME asks permission to take screenshots. Window capture lists
+> only X11/XWayland windows.
 
 ## Keyboard Shortcuts
 

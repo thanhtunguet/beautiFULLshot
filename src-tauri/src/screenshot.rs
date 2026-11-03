@@ -1,17 +1,20 @@
 // Screenshot capture module using xcap crate
 // Provides fullscreen, region, and window capture functionality
-// Falls back to grim on Linux Wayland when xcap fails
+// On Linux Wayland, capture goes through the desktop's own API (see linux_capture.rs)
 // Supports multi-monitor capture with cursor-based monitor detection
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
-use image::ImageEncoder;
+use image::{ImageEncoder, RgbaImage};
 use mouse_position::mouse_position::Mouse;
 use serde::{Deserialize, Serialize};
 use xcap::{Monitor, Window as XcapWindow};
 
 #[cfg(target_os = "linux")]
-use std::process::Command;
+use crate::{
+    linux_capture,
+    linux_env::{self, SessionType},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MonitorInfo {
@@ -35,49 +38,118 @@ pub struct WindowInfo {
     pub height: u32,
 }
 
-/// Check if running on Wayland (Linux only)
-#[cfg(target_os = "linux")]
-fn is_wayland() -> bool {
-    std::env::var("WAYLAND_DISPLAY").is_ok()
+/// Pick the primary monitor. XWayland and some X servers mark none as primary,
+/// so fall back to the first monitor instead of failing the capture.
+fn pick_primary(monitors: Vec<Monitor>) -> Option<Monitor> {
+    let index = monitors
+        .iter()
+        .position(|m| m.is_primary().unwrap_or(false))
+        .unwrap_or(0);
+    monitors.into_iter().nth(index)
 }
 
-/// Capture fullscreen using grim (Wayland-native tool)
-/// Returns base64-encoded PNG on success
-#[cfg(target_os = "linux")]
-fn capture_with_grim() -> Result<String, String> {
-    // grim outputs PNG to stdout with "-" argument
-    let output = Command::new("grim")
-        .arg("-")
-        .output()
-        .map_err(|e| format!("Failed to run grim: {}. Install grim for Wayland support.", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("grim failed: {}", stderr));
-    }
-
-    Ok(STANDARD.encode(&output.stdout))
+/// Capture one monitor as an image
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn capture_monitor_image(monitor: &Monitor) -> Result<RgbaImage, String> {
+    monitor.capture_image().map_err(|e| e.to_string())
 }
 
-/// Capture region using grim + slurp (Wayland-native tools)
-/// slurp provides interactive region selection, grim captures it
+/// Capture one monitor as an image.
+/// X11 uses xcap. Wayland has no common API, so the whole desktop is captured through the
+/// desktop's own mechanism (portal, spectacle, grim, ...) and cropped to the monitor.
 #[cfg(target_os = "linux")]
-fn capture_region_with_grim(x: i32, y: i32, width: u32, height: u32) -> Result<String, String> {
-    // grim -g "x,y widthxheight" captures specific region
-    let geometry = format!("{},{} {}x{}", x, y, width, height);
-    let output = Command::new("grim")
-        .arg("-g")
-        .arg(&geometry)
-        .arg("-")
-        .output()
-        .map_err(|e| format!("Failed to run grim: {}. Install grim for Wayland support.", e))?;
+pub(crate) fn capture_monitor_image(monitor: &Monitor) -> Result<RgbaImage, String> {
+    let env = linux_env::current();
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("grim region capture failed: {}", stderr));
+    if env.session == SessionType::Wayland {
+        return match linux_capture::capture_desktop(env) {
+            Ok(desktop) => Ok(crop_to_monitor(desktop, monitor)),
+            // wlroots-style compositors: xcap's wlr-screencopy may still work
+            Err(chain_error) if linux_capture::xcap_wayland_fallback_useful(env) => monitor
+                .capture_image()
+                .map_err(|e| format!("{} xcap: {}", chain_error, e)),
+            Err(chain_error) => Err(chain_error),
+        };
     }
 
-    Ok(STANDARD.encode(&output.stdout))
+    let xcap_error = match monitor.capture_image() {
+        Ok(image) if image.width() > 0 && image.height() > 0 => return Ok(image),
+        Ok(_) => "empty image".to_string(),
+        Err(e) => e.to_string(),
+    };
+    eprintln!("[capture] xcap failed on X11: {}", xcap_error);
+    // Rare on X11 (no XRandR, odd server): fall back to screenshot tools
+    linux_capture::capture_desktop(env)
+        .map(|desktop| crop_to_monitor(desktop, monitor))
+        .map_err(|e| format!("xcap: {}. {}", xcap_error, e))
+}
+
+#[cfg(target_os = "linux")]
+fn crop_to_monitor(desktop: RgbaImage, monitor: &Monitor) -> RgbaImage {
+    let rect = |m: &Monitor| linux_capture::Rect {
+        x: m.x().unwrap_or(0),
+        y: m.y().unwrap_or(0),
+        width: m.width().unwrap_or(0),
+        height: m.height().unwrap_or(0),
+    };
+    let all: Vec<_> = Monitor::all()
+        .map(|monitors| monitors.iter().map(rect).collect())
+        .unwrap_or_default();
+    linux_capture::crop_monitor(desktop, rect(monitor), &all)
+}
+
+/// Capture the primary monitor
+fn capture_primary_image() -> Result<RgbaImage, String> {
+    let monitors = match Monitor::all() {
+        Ok(monitors) => monitors,
+        Err(e) => return capture_without_monitor_list(e.to_string()),
+    };
+    let primary = pick_primary(monitors).ok_or("No primary monitor found")?;
+    let image = capture_monitor_image(&primary)?;
+
+    // Verify we got a valid image
+    if image.width() == 0 || image.height() == 0 {
+        return Err("Screen recording permission not granted".to_string());
+    }
+    Ok(image)
+}
+
+/// Pure Wayland without XWayland: xcap cannot list monitors, but the desktop API still works
+#[cfg(target_os = "linux")]
+fn capture_without_monitor_list(reason: String) -> Result<RgbaImage, String> {
+    let env = linux_env::current();
+    if env.session == SessionType::Wayland {
+        linux_capture::capture_desktop(env)
+    } else {
+        Err(reason)
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn capture_without_monitor_list(reason: String) -> Result<RgbaImage, String> {
+    Err(reason)
+}
+
+/// Crop an image to the requested region (clamped to the image) and encode it
+fn crop_region_to_base64(
+    image: &RgbaImage,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    // Validate region bounds
+    let start_x = x.max(0) as u32;
+    let start_y = y.max(0) as u32;
+    let crop_width = width.min(image.width().saturating_sub(start_x));
+    let crop_height = height.min(image.height().saturating_sub(start_y));
+
+    if crop_width == 0 || crop_height == 0 {
+        return Err("Invalid region dimensions".to_string());
+    }
+
+    let cropped = image::imageops::crop_imm(image, start_x, start_y, crop_width, crop_height).to_image();
+    image_to_base64_png(&cropped)
 }
 
 /// Convert RgbaImage to base64-encoded PNG string (maximum speed)
@@ -99,77 +171,15 @@ fn image_to_base64_png(img: &image::RgbaImage) -> Result<String, String> {
 }
 
 /// Capture primary monitor - returns base64-encoded PNG
-/// On Linux Wayland: falls back to grim if xcap fails
 #[tauri::command]
 pub fn capture_fullscreen() -> Result<String, String> {
-    // Try xcap first
-    let xcap_result = (|| -> Result<String, String> {
-        let monitors = Monitor::all().map_err(|e| e.to_string())?;
-        let primary = monitors
-            .into_iter()
-            .find(|m| m.is_primary().unwrap_or(false))
-            .ok_or("No primary monitor found")?;
-
-        let image = primary.capture_image().map_err(|e| e.to_string())?;
-
-        // Verify we got a valid image
-        if image.width() == 0 || image.height() == 0 {
-            return Err("Screen recording permission not granted".to_string());
-        }
-
-        image_to_base64_png(&image)
-    })();
-
-    // On Linux Wayland, try grim as fallback if xcap failed
-    #[cfg(target_os = "linux")]
-    if xcap_result.is_err() && is_wayland() {
-        println!("xcap failed on Wayland, trying grim fallback...");
-        return capture_with_grim();
-    }
-
-    xcap_result
+    image_to_base64_png(&capture_primary_image()?)
 }
 
 /// Capture specific region from primary monitor - returns base64-encoded PNG
-/// On Linux Wayland: falls back to grim if xcap fails
 #[tauri::command]
 pub fn capture_region(x: i32, y: i32, width: u32, height: u32) -> Result<String, String> {
-    // Try xcap first
-    let xcap_result = (|| -> Result<String, String> {
-        let monitors = Monitor::all().map_err(|e| e.to_string())?;
-        let monitor = monitors
-            .into_iter()
-            .find(|m| m.is_primary().unwrap_or(false))
-            .ok_or("No primary monitor")?;
-
-        let image = monitor.capture_image().map_err(|e| e.to_string())?;
-
-        // Validate region bounds
-        let img_width = image.width();
-        let img_height = image.height();
-        let start_x = x.max(0) as u32;
-        let start_y = y.max(0) as u32;
-        let crop_width = width.min(img_width.saturating_sub(start_x));
-        let crop_height = height.min(img_height.saturating_sub(start_y));
-
-        if crop_width == 0 || crop_height == 0 {
-            return Err("Invalid region dimensions".to_string());
-        }
-
-        // Crop to region
-        let cropped = image::imageops::crop_imm(&image, start_x, start_y, crop_width, crop_height).to_image();
-
-        image_to_base64_png(&cropped)
-    })();
-
-    // On Linux Wayland, try grim as fallback if xcap failed
-    #[cfg(target_os = "linux")]
-    if xcap_result.is_err() && is_wayland() {
-        println!("xcap region capture failed on Wayland, trying grim fallback...");
-        return capture_region_with_grim(x, y, width, height);
-    }
-
-    xcap_result
+    crop_region_to_base64(&capture_primary_image()?, x, y, width, height)
 }
 
 /// Minimum window size to filter out icons and tiny windows
@@ -311,7 +321,7 @@ pub fn capture_monitor(monitor_id: u32) -> Result<String, String> {
         .find(|m| m.id().unwrap_or(0) == monitor_id)
         .ok_or("Monitor not found")?;
 
-    let image = monitor.capture_image().map_err(|e| e.to_string())?;
+    let image = capture_monitor_image(&monitor)?;
 
     if image.width() == 0 || image.height() == 0 {
         return Err("Screen recording permission not granted".to_string());
@@ -336,22 +346,6 @@ pub fn capture_region_from_monitor(
         .find(|m| m.id().unwrap_or(0) == monitor_id)
         .ok_or("Monitor not found")?;
 
-    let image = monitor.capture_image().map_err(|e| e.to_string())?;
-
-    // Validate region bounds (coordinates are relative to monitor)
-    let img_width = image.width();
-    let img_height = image.height();
-    let start_x = x.max(0) as u32;
-    let start_y = y.max(0) as u32;
-    let crop_width = width.min(img_width.saturating_sub(start_x));
-    let crop_height = height.min(img_height.saturating_sub(start_y));
-
-    if crop_width == 0 || crop_height == 0 {
-        return Err("Invalid region dimensions".to_string());
-    }
-
-    let cropped =
-        image::imageops::crop_imm(&image, start_x, start_y, crop_width, crop_height).to_image();
-
-    image_to_base64_png(&cropped)
+    let image = capture_monitor_image(&monitor)?;
+    crop_region_to_base64(&image, x, y, width, height)
 }

@@ -19,6 +19,10 @@ pub static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
 mod clipboard;
 mod file_ops;
+#[cfg(target_os = "linux")]
+mod linux_capture;
+#[cfg(target_os = "linux")]
+mod linux_env;
 mod open_with;
 mod overlay;
 mod permissions;

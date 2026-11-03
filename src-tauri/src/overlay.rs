@@ -53,7 +53,7 @@ fn capture_monitor_for_overlay(monitor_id: u32) -> Result<String, String> {
 
 /// Capture a monitor and encode as base64 PNG
 fn capture_monitor_to_base64(monitor: &Monitor) -> Result<String, String> {
-    let image = monitor.capture_image().map_err(|e| e.to_string())?;
+    let image = crate::screenshot::capture_monitor_image(monitor)?;
 
     let width = image.width();
     let height = image.height();

@@ -137,8 +137,8 @@ export async function checkScreenPermission(): Promise<boolean> {
 }
 
 /**
- * Check if running on Wayland (Linux)
- * @returns Warning message if Wayland detected, null otherwise
+ * Check whether Linux screen capture has a usable backend (Wayland only)
+ * @returns Warning with install hint if no backend is available, null otherwise
  */
 export async function checkWayland(): Promise<string | null> {
   return await invoke<string | null>("check_wayland");
