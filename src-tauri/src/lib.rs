@@ -283,11 +283,7 @@ pub fn run() {
                     // Restore dock icon
                     let _ = _app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
-                    if let Some(window) = _app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                    }
+                    tray::show_main_window(_app);
                 }
 
                 _ => {}

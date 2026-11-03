@@ -39,14 +39,13 @@ pub fn emit_open_file_event(app: &tauri::AppHandle, path: String) {
 
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.emit(APP_OPEN_FILE_EVENT, path);
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
 
         #[cfg(target_os = "macos")]
         {
             let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
         }
+
+        crate::tray::show_main_window(app);
     }
 }
 

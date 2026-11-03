@@ -9,6 +9,31 @@ use tauri::{
 
 use crate::SHOULD_QUIT;
 
+/// Shows, unminimizes and focuses the main window.
+pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+
+    // Linux (GTK): after hide() -> show(), the titlebar's maximize/minimize/close
+    // buttons stay unresponsive until the window state changes (e.g. a double-click
+    // on the titlebar). Re-applying the decorations once the window is mapped
+    // makes the window manager rebuild them.
+    #[cfg(target_os = "linux")]
+    {
+        let window = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = window.set_decorations(false);
+            let _ = window.set_decorations(true);
+        });
+    }
+}
+
 /// Creates and configures the system tray icon with menu
 pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // Capture menu items
@@ -56,11 +81,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                 #[cfg(target_os = "macos")]
                 let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
+                show_main_window(app);
             }
             "capture_screen" => {
                 if let Some(window) = app.get_webview_window("main") {
@@ -93,11 +114,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                 #[cfg(target_os = "macos")]
                 let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
+                show_main_window(app);
             }
         })
         .build(app)?;
